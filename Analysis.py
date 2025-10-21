@@ -33,6 +33,7 @@ def main():
     check_duplicates()
     print("\nChecking for null values...")
     check_null_count()
+    print("\nChecking for outliers...")
     # average trade size & cumlative porto has outliers > 10%
     detect_outlier(df_trades)
     # STK001 has outliers > 10%
@@ -40,8 +41,13 @@ def main():
     #detect_outlier(df_customers)
     #detect_outlier(df_stocks)
     #detect_outlier(df_dates)
-    handle_outlier(df_prices["STK001"])
-    handle_outlier(df_trades["average_trade_size"])
+    print("\nHandling outliers...")
+    df_prices_outliers = handle_outlier(df_prices, "STK001")
+    df_trades_outliers = handle_outlier(df_trades, "average_trade_size")
+    df_trades_outliers = handle_outlier(df_trades_outliers, "cumulative_portfolio_value")
+
+    detect_outlier(df_trades_outliers)
+    detect_outlier(df_prices_outliers)
 
 
 
@@ -50,7 +56,7 @@ def detect_outlier(df):
     for column in df.select_dtypes(include='number').columns:
         Q1 = df[column].quantile(0.25)
         Q3 = df[column].quantile(0.75)
-        IQR = Q3-  Q1
+        IQR = Q3 -  Q1
 
         lowerBound = Q1 - 1.5 * IQR
         upperBound = Q3 + 1.5 * IQR
@@ -63,8 +69,15 @@ def detect_outlier(df):
                 print(f"{column} has outliers! the total percentage is: {percentage}%")
         
 
-def handle_outlier(column):
-    print(column.std())
+def handle_outlier(df, columnName):
+    result = df.copy()
+    if (df[columnName] == 0).any():
+        result[columnName] = np.log1p(df[columnName])
+    else:
+        result[columnName] = np.log(df[columnName])
+    return result
+
+
 
         
 
