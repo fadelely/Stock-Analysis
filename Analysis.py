@@ -33,5 +33,40 @@ def main():
     check_duplicates()
     print("\nChecking for null values...")
     check_null_count()
+    # average trade size & cumlative porto has outliers > 10%
+    detect_outlier(df_trades)
+    # STK001 has outliers > 10%
+    detect_outlier(df_prices)
+    #detect_outlier(df_customers)
+    #detect_outlier(df_stocks)
+    #detect_outlier(df_dates)
+    handle_outlier(df_prices["STK001"])
+    handle_outlier(df_trades["average_trade_size"])
+
+
+
+def detect_outlier(df):
+    outlierPercentage = []
+    for column in df.select_dtypes(include='number').columns:
+        Q1 = df[column].quantile(0.25)
+        Q3 = df[column].quantile(0.75)
+        IQR = Q3-  Q1
+
+        lowerBound = Q1 - 1.5 * IQR
+        upperBound = Q3 + 1.5 * IQR
+        outlier = (df[column] < lowerBound) | (df[column] > upperBound)
+        outlierCount = outlier.sum()
+        if(outlierCount > 0):
+            percentage = outlierCount/df[column].count() * 100
+            percentage = round(percentage, 2)
+            if(percentage > 10):
+                print(f"{column} has outliers! the total percentage is: {percentage}%")
+        
+
+def handle_outlier(column):
+    print(column.std())
+
+        
+
 
 main()
