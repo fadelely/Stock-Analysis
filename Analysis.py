@@ -117,6 +117,7 @@ def merge_tables():
 
 
 def main():
+    global df_trades, df_prices
     print("Checking for duplicates...")
     check_duplicates()
     print("\nChecking for null values...")
@@ -130,20 +131,22 @@ def main():
     # average trade size & cumlative porto has outliers > 10%
     #detect_outlier(df_trades)
     # STK001 has outliers > 10%
-    #detect_outlier(df_prices)
-    #detect_outlier(df_customers)
-    #detect_outlier(df_stocks)
-    #detect_outlier(df_dates)
+    detect_outlier(df_prices)
+    detect_outlier(df_customers)
+    detect_outlier(df_stocks)
+    detect_outlier(df_dates)
     print("\nHandling outliers...")
-    #df_prices = handle_outlier(df_prices, "STK001")
-    #df_trades = handle_outlier(df_trades, "average_trade_size")
-    #df_trades = handle_outlier(df_trades_outliers, "cumulative_portfolio_value")
-    #detect_outlier(df_trades)
-    #detect_outlier(df_prices)
+    df_prices = handle_outlier(df_prices, "STK001")
+    df_trades = handle_outlier(df_trades, "average_trade_size")
+    df_trades = handle_outlier(df_trades, "cumulative_portfolio_value")
+
+    detect_outlier(df_trades)
+    detect_outlier(df_prices)
     print("\nMerging tables...")
     merged_df = merge_tables()
-    print(merged_df)
-    
+    print(merged_df) 
+
+
 
     
 
