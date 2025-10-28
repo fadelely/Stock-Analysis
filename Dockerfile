@@ -10,8 +10,5 @@ COPY . .
 # install dependencies
 RUN pip install numpy pandas seaborn matplotlib
 
-# make port 80 available ? remove??
-# EXPOSE 80
-
 # run the analysis
 CMD ["python", "Analysis.py"]
