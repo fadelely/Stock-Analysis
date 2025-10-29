@@ -137,14 +137,13 @@ def main():
         check_null_count(df)
 
     print("\nChecking and handling outliers...")
-    for _, df in dfs.items():
+    for name, df in dfs.items():
         for column in df.select_dtypes(include='number').columns:
             outlier_percentage = get_outlier_percentage(df, column) 
             if(outlier_percentage > 10):
                 print(f"{column} has outliers! the total percentage is: {outlier_percentage}%")
                 print(f"Handling outliers in {column}...")
-                df = handle_outlier(df, column)
-                # check if after handling outlier, the percentage is less than 10% or not
+                dfs[name] = handle_outlier(df, column)
                 outlier_percentage = get_outlier_percentage(df, column)
                 if(outlier_percentage > 10):
                     print(f"{column} still has {outlier_percentage}% outliers...")
@@ -152,6 +151,7 @@ def main():
                     print(f"{column} now has less than 10 percent outliers...")
 
 
+    print(get_outlier_percentage(dfs["prices"], "STK001"))
     print("\nMerging tables...")
     merged_df = merge_tables(
         dfs["trades"],
