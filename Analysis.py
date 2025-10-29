@@ -4,34 +4,21 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 
 # reading csv
-df_trades=pd.read_csv('datasets/trades.csv')
-df_prices=pd.read_csv('datasets/daily_trade_prices.csv')
-df_customers=pd.read_csv('datasets/dim_customer.csv')
-df_stocks=pd.read_csv('datasets/dim_stock.csv')
-df_dates=pd.read_csv('datasets/dim_date.csv')
+def read_csv(file_path):
+    return pd.read_csv(file_path)
 
-def check_duplicates():
-    print(df_trades.duplicated().sum())
-    print(df_prices.duplicated().sum())
-    print(df_customers.duplicated().sum())
-    print(df_stocks.duplicated().sum())
-    print(df_dates.duplicated().sum())
+def check_duplicates(df):
+    print(df.duplicated().sum())
 
-def check_null_count():
-    print(df_trades.isnull().sum())
+def check_null_count(df):
+    print(df.isnull().sum())
     print('-----------------------')
-    print(df_prices.isnull().sum())
-    print('-----------------------')
-    print(df_customers.isnull().sum())
-    print('-----------------------')
-    print(df_stocks.isnull().sum())
-    print('-----------------------')
-    print(df_dates.isnull().sum())
 
-def fill_daily_trade_prices():
-    global df_prices, df_trades
+
+def fill_daily_trade_prices(df_prices, df_trades):
     # fill by a trade performed in that date
-    cols_with_nulls = df_prices.columns[df_prices.isnull().any()].tolist()
+    df_filled = df_prices.copy()
+    cols_with_nulls = df_filled.columns[df_filled.isnull().any()].tolist()
 
     for col in cols_with_nulls:
         est_map = (
@@ -40,31 +27,31 @@ def fill_daily_trade_prices():
             .apply(lambda x: (x['cumulative_portfolio_value'] / x['quantity']).mean())
         )
 
-        df_prices[col] = df_prices[col].fillna(
-            df_prices['date'].map(est_map)
+        df_filled[col] = df_filled[col].fillna(
+            df_filled['date'].map(est_map)
         )
 
     # for values that are still null
     # mean of the price before and after that specific day and for edges bfill and ffill although not needed
-    df_prices = df_prices.interpolate(method='linear', axis=0).ffill().bfill()
+    df_filled = df_filled.interpolate(method='linear', axis=0).ffill().bfill()
+    return df_filled
 
-def detect_outlier(df):
-    outlierPercentage = []
-    for column in df.select_dtypes(include='number').columns:
-        Q1 = df[column].quantile(0.25)
-        Q3 = df[column].quantile(0.75)
-        IQR = Q3 -  Q1
+def get_outlier_percentage(df, column):
+    Q1 = df[column].quantile(0.25)
+    Q3 = df[column].quantile(0.75)
+    IQR = Q3 - Q1
 
-        lowerBound = Q1 - 1.5 * IQR
-        upperBound = Q3 + 1.5 * IQR
-        outlier = (df[column] < lowerBound) | (df[column] > upperBound)
-        outlierCount = outlier.sum()
-        if(outlierCount > 0):
-            percentage = outlierCount/df[column].count() * 100
-            percentage = round(percentage, 2)
-            if(percentage > 10):
-                print(f"{column} has outliers! the total percentage is: {percentage}%")
-        
+    lowerBound = Q1 - 1.5 * IQR
+    upperBound = Q3 + 1.5 * IQR
+    outlier = (df[column] < lowerBound) | (df[column] > upperBound)
+    outlierCount = outlier.sum()
+    if(outlierCount > 0):
+        percentage = outlierCount/df[column].count() * 100
+        percentage = round(percentage, 2)
+        return percentage
+
+    return 0.0
+
 
 def handle_outlier(df, columnName):
     result = df.copy()
@@ -74,20 +61,20 @@ def handle_outlier(df, columnName):
         result[columnName] = np.log(df[columnName])
     return result
 
-def get_stock_price(row):
+def get_stock_price(df_prices, row):
     stock_name = row["stock_ticker"]
     date = row["timestamp"]
     date_prices = df_prices[df_prices["date"] == date]
     stock_price = date_prices[stock_name].values[0]
     return stock_price
 
-def merge_tables():
+def merge_tables(df_trades, df_prices, df_customers, df_stocks, df_dates):
     # start merging from trades.csv
     merged_df = df_trades.copy()
     merged_df = merged_df.drop(["cumulative_portfolio_value"], axis=1)
 
     # lambda function since stock_tickers are stored as columns not rows i.e can't do a simple merge
-    merged_df["stock_price"] = merged_df.apply(get_stock_price, axis=1)
+    merged_df["stock_price"] = merged_df.apply(lambda row: get_stock_price(df_prices, row), axis=1)
     merged_df["total_trade_amount"] = merged_df["stock_price"] * merged_df["quantity"]
 
     # customer id and key are exactly the same, so a join with either column works
@@ -115,44 +102,74 @@ def merge_tables():
     
     return merged_df
 
+def save_df(df, file_name):
+    df.to_csv(file_name, index=False)
+    print(f"{file_name} has been saved!")
 
 def main():
-    global df_trades, df_prices
+    df_trades = read_csv('datasets/trades.csv')
+    df_prices = read_csv('datasets/daily_trade_prices.csv')
+    df_customers = read_csv('datasets/dim_customer.csv')
+    df_stocks = read_csv('datasets/dim_stock.csv')
+    df_dates = read_csv('datasets/dim_date.csv')
+    # do not use the above variables at any point, only use the ones in the dict below
+    dfs = {
+        "trades": df_trades,
+        "prices": df_prices,
+        "customers": df_customers,
+        "stocks": df_stocks,
+        "dates": df_dates
+    }
+
     print("Checking for duplicates...")
-    check_duplicates()
+    for _, df in dfs.items():
+        check_duplicates(df)
+
     print("\nChecking for null values...")
-    check_null_count()
+    for _, df in dfs.items():
+        check_null_count(df)
+
     print("\nFilling daily trade missing values...")
-    fill_daily_trade_prices()
-    print("\nChecking for null values...")
-    check_null_count()
+    dfs["prices"] = fill_daily_trade_prices(dfs["prices"], dfs["trades"])
 
-    print("\nChecking for outliers...")
-    # average trade size & cumlative porto has outliers > 10%
-    #detect_outlier(df_trades)
-    # STK001 has outliers > 10%
-    detect_outlier(df_prices)
-    detect_outlier(df_customers)
-    detect_outlier(df_stocks)
-    detect_outlier(df_dates)
-    print("\nHandling outliers...")
-    df_prices = handle_outlier(df_prices, "STK001")
-    df_trades = handle_outlier(df_trades, "average_trade_size")
-    df_trades = handle_outlier(df_trades, "cumulative_portfolio_value")
+    print("\nChecking for null values after imputation...")
+    for _, df in dfs.items():
+        check_null_count(df)
 
-    detect_outlier(df_trades)
-    detect_outlier(df_prices)
+    print("\nChecking and handling outliers...")
+    for _, df in dfs.items():
+        for column in df.select_dtypes(include='number').columns:
+            outlier_percentage = get_outlier_percentage(df, column) 
+            if(outlier_percentage > 10):
+                print(f"{column} has outliers! the total percentage is: {outlier_percentage}%")
+                print(f"Handling outliers in {column}...")
+                df = handle_outlier(df, column)
+                # check if after handling outlier, the percentage is less than 10% or not
+                outlier_percentage = get_outlier_percentage(df, column)
+                if(outlier_percentage > 10):
+                    print(f"{column} still has {outlier_percentage}% outliers...")
+                else:
+                    print(f"{column} now has less than 10 percent outliers...")
+
+
     print("\nMerging tables...")
-    merged_df = merge_tables()
-    print(merged_df) 
+    merged_df = merge_tables(
+        dfs["trades"],
+        dfs["prices"],
+        dfs["customers"],
+        dfs["stocks"],
+        dfs["dates"]
+    )
+
+    print(merged_df.head(10)) 
+    print(merged_df.shape) 
+
+
+    print("\nSaving merged dataframe...")
+
 
 
 
     
-
-
-
-        
-
 
 main()
