@@ -134,6 +134,7 @@ def get_outlier_percentage(df, column):
 def handle_outlier(df, columnName):
     result = df.copy()
     new_col = columnName + "_outlier"
+    print(new_col)
     if (df[columnName] == 0).any():
         result[new_col] = np.log1p(df[columnName])
     else:
@@ -228,14 +229,12 @@ def main():
             if(outlier_percentage > 10):
                 print(f"{column} has outliers! the total percentage is: {outlier_percentage}%")
                 print(f"Handling outliers in {column}...")
-                dfs[name] = handle_outlier(df, column)
+                dfs[name] = handle_outlier(dfs[name], column)
                 outlier_percentage = get_outlier_percentage(dfs[name], column + "_outlier")
                 if(outlier_percentage > 10):
                     print(f"{column} still has {outlier_percentage}% outliers.")
                 else:
                     print(f"{column} now has less than 10 percent outliers.")
-
-
 
 
     print("\nChecking for inconsistencies")
@@ -255,7 +254,7 @@ def main():
 
     print("\nSaving merged dataframe...")
     
-    #save_df(merged_df, "./merged.csv")
+    save_df(merged_df, "./merged.csv")
 
     for column in merged_df.select_dtypes(include='number').columns:
         x = (get_outlier_percentage(merged_df, column))
