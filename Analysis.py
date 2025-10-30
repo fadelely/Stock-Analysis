@@ -184,6 +184,7 @@ def save_df(df, file_name):
     df.to_csv(file_name, index=False)
     print(f"{file_name} has been saved!")
 
+
 def main():
     df_trades = read_csv('datasets/trades.csv')
     df_prices = read_csv('datasets/daily_trade_prices.csv')
@@ -217,19 +218,19 @@ def main():
     print("\nChecking and handling outliers...")
     for name, df in dfs.items():
         for column in df.select_dtypes(include='number').columns:
-            outlier_percentage = get_outlier_percentage(df, column) 
+            outlier_percentage = get_outlier_percentage(dfs[name], column) 
             if(outlier_percentage > 10):
                 print(f"{column} has outliers! the total percentage is: {outlier_percentage}%")
                 print(f"Handling outliers in {column}...")
                 dfs[name] = handle_outlier(df, column)
-                outlier_percentage = get_outlier_percentage(df, column)
+                outlier_percentage = get_outlier_percentage(dfs[name], column)
                 if(outlier_percentage > 10):
                     print(f"{column} still has {outlier_percentage}% outliers...")
                 else:
                     print(f"{column} now has less than 10 percent outliers...")
 
 
-    print(get_outlier_percentage(dfs["prices"], "STK001"))
+
 
     print("\nChecking for inconsistencies")
     explore_unique_values(df_trades, df_prices, df_customers, df_stocks, df_dates)
@@ -244,12 +245,19 @@ def main():
         dfs["stocks"],
         dfs["dates"]
     )
-
-    print(merged_df.head(10)) 
-    print(merged_df.shape) 
-
+    
 
     print("\nSaving merged dataframe...")
+
+    for column in merged_df.select_dtypes(include='number').columns:
+        x = (get_outlier_percentage(merged_df, column))
+        if(x>10):
+            print(column, x)
+        
+    print("OK ")
+    print(get_outlier_percentage(dfs["trades"], "average_trade_size"))
+    check_null_count(merged_df)
+
 
 
 
