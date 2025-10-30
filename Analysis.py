@@ -133,10 +133,11 @@ def get_outlier_percentage(df, column):
 
 def handle_outlier(df, columnName):
     result = df.copy()
+    new_col = columnName + "_outlier"
     if (df[columnName] == 0).any():
-        result[columnName] = np.log1p(df[columnName])
+        result[new_col] = np.log1p(df[columnName])
     else:
-        result[columnName] = np.log(df[columnName])
+        result[new_col] = np.log(df[columnName])
     return result
 
 def get_stock_price(df_prices, row):
@@ -144,12 +145,17 @@ def get_stock_price(df_prices, row):
     date = row["timestamp"]
     date_prices = df_prices[df_prices["date"] == date]
     stock_price = date_prices[stock_name].values[0]
+    if(stock_name == "STK001"):
+        stock_price = date_prices["STK001_outlier"].values[0]
+        stock_price = np.exp(stock_price)
+
     return stock_price
 
 def merge_tables(df_trades, df_prices, df_customers, df_stocks, df_dates):
     # start merging from trades.csv
     merged_df = df_trades.copy()
-    merged_df = merged_df.drop(["cumulative_portfolio_value"], axis=1)
+    merged_df = merged_df.drop(["cumulative_portfolio_value", "cumulative_portfolio_value_outlier", "average_trade_size"], axis=1)
+    merged_df = merged_df.rename(columns={"average_trade_size_outlier":"average_trade_size"})
 
     # lambda function since stock_tickers are stored as columns not rows i.e can't do a simple merge
     merged_df["stock_price"] = merged_df.apply(lambda row: get_stock_price(df_prices, row), axis=1)
@@ -223,11 +229,11 @@ def main():
                 print(f"{column} has outliers! the total percentage is: {outlier_percentage}%")
                 print(f"Handling outliers in {column}...")
                 dfs[name] = handle_outlier(df, column)
-                outlier_percentage = get_outlier_percentage(dfs[name], column)
+                outlier_percentage = get_outlier_percentage(dfs[name], column + "_outlier")
                 if(outlier_percentage > 10):
-                    print(f"{column} still has {outlier_percentage}% outliers...")
+                    print(f"{column} still has {outlier_percentage}% outliers.")
                 else:
-                    print(f"{column} now has less than 10 percent outliers...")
+                    print(f"{column} now has less than 10 percent outliers.")
 
 
 
@@ -248,15 +254,17 @@ def main():
     
 
     print("\nSaving merged dataframe...")
+    
+    #save_df(merged_df, "./merged.csv")
 
     for column in merged_df.select_dtypes(include='number').columns:
         x = (get_outlier_percentage(merged_df, column))
         if(x>10):
             print(column, x)
         
-    print("OK ")
-    print(get_outlier_percentage(dfs["trades"], "average_trade_size"))
-    check_null_count(merged_df)
+    #print("OK ")
+    #print(get_outlier_percentage(dfs["trades"], "average_trade_size"))
+    #check_null_count(merged_df)
 
 
 
