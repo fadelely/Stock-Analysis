@@ -1,7 +1,6 @@
 import numpy as np
 import pandas as pd
-import seaborn as sns
-import matplotlib.pyplot as plt
+from db_utils import save_to_db
 
 # reading csv
 def read_csv(file_path):
@@ -247,6 +246,8 @@ def main():
 
     print(merged_df.head(10)) 
     print(merged_df.shape) 
+
+    save_to_db(merged_df,'merged_df_final')
 
 
     print("\nSaving merged dataframe...")
