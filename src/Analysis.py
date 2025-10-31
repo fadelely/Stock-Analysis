@@ -187,10 +187,6 @@ def merge_tables(df_trades, df_prices, df_customers, df_stocks, df_dates):
     
     return merged_df
 
-def save_df(df, file_name):
-    df.to_csv(file_name, index=False)
-    print(f"{file_name} has been saved!")
-
 
 def main():
     base_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "datasets")
@@ -254,25 +250,9 @@ def main():
         dfs["dates"]
     )
 
-    print(merged_df.head(10)) 
-    print(merged_df.shape) 
-
     print("\nSaving merged dataframe...")
     save_to_db(merged_df,'merged_df_final')
 
 
-    
-
-
-        
-    #print("OK ")
-    #print(get_outlier_percentage(dfs["trades"], "average_trade_size"))
-    #check_null_count(merged_df)
-
-
-
-
-
-    
-
-main()
+if __name__ == "__main__":
+    main()
