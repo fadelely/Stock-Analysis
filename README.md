@@ -26,15 +26,14 @@ Each record corresponds to a single transaction made by a customer in a specific
 | **stock_industry**        | The specific industry classification of the traded stock.                   | String      | `Software`, `Pharmaceuticals`, `Banking` |
 
 
-# Running Docker
-docker build
-`docker build -t first-img .`
+# Running with Docker Compose
+### Build and Start All Services
+`docker compose up --build`
 
-docker run 
-`docker run --name first-cont -d first-img`
+  This command builds the image (if not already built) and starts:
+* **PostgreSQL database** (`pgdatabase`)
+* **pgAdmin web interface** (`pg_admin`)
+* **Main analysis app** (`stock-analysis`)
 
-start service 
-`docker compose up`
-
-stop docker compose
+### Stop All Services
 `docker compose down`
