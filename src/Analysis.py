@@ -121,13 +121,19 @@ def get_outlier_percentage(df, column):
 def handle_outlier(df, columnName):
     result = df.copy()
     new_col = columnName + "_outlier"
-    print(new_col)
     if (df[columnName] == 0).any():
         result[new_col] = np.log1p(df[columnName])
     else:
         result[new_col] = np.log(df[columnName])
     return result
 
+def discretize_average_trade(df):
+    result = df.copy()
+    labels = ['Small', 'Medium', 'Large', 'Very Large', 'Extreme']
+    bins = [0, 176.27, 201.73, 212.63, 500, df['average_trade_size'].max()]
+    result['average_trade_size_outlier'] = pd.cut(df['average_trade_size'], bins=bins, labels=labels, include_lowest=True)
+    return result
+    
 def get_stock_price(df_prices, row):
     stock_name = row["stock_ticker"]
     date = row["timestamp"]
@@ -217,6 +223,12 @@ def main():
             if(outlier_percentage > 10):
                 print(f"{column} has outliers! the total percentage is: {outlier_percentage}%")
                 print(f"Handling outliers in {column}...")
+
+                if(column == "average_trade_size"):
+                    dfs[name] = discretize_average_trade(dfs[name])
+                    print(f"{column} has been discretized.")
+                    continue
+
                 dfs[name] = handle_outlier(dfs[name], column)
                 outlier_percentage = get_outlier_percentage(dfs[name], column + "_outlier")
                 if(outlier_percentage > 10):
@@ -239,6 +251,8 @@ def main():
         dfs["dates"]
     )
     
+    pd.set_option('display.max_columns', None)
+    print(merged_df)
 
 
 
