@@ -103,7 +103,7 @@ def fill_daily_trade_prices(df_prices, df_trades):
         est_map = (
             df_trades[df_trades['stock_ticker'] == col]
             .groupby('timestamp')
-            .apply(lambda x: (x['cumulative_portfolio_value'] / x['quantity']).mean())
+            .apply(lambda x: (x['cumulative_portfolio_value'] / x['quantity']))
         )
 
         df_filled[col] = df_filled[col].fillna(
