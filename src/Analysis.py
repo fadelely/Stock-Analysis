@@ -98,19 +98,6 @@ def detect_inconsistencies(df_trades, df_prices, df_customers, df_stocks, df_dat
 
 def fill_daily_trade_prices(df_prices, df_trades):
     df_filled = df_prices.copy()
-    cols_with_nulls = df_filled.columns[df_filled.isnull().any()].tolist()
-
-    for col in cols_with_nulls:
-        est_map = (
-            df_trades[df_trades['stock_ticker'] == col]
-            .groupby('timestamp')
-            .apply(lambda x: (x['cumulative_portfolio_value'] / x['quantity']))
-        )
-
-        df_filled[col] = df_filled[col].fillna(
-            df_filled['date'].map(est_map)
-        )
-    # there is no missing prices at edges so we can remove ffill and bfill
     df_filled = df_filled.interpolate(method='linear', axis=0).ffill().bfill()
     return df_filled
 
@@ -211,7 +198,7 @@ def main():
     print("Checking for duplicates...")
     for _, df in dfs.items():
         check_duplicates(df)
-
+        
     print("\nChecking for null values...")
     for _, df in dfs.items():
         check_null_count(df)
