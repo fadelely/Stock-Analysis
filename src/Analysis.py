@@ -148,7 +148,6 @@ def get_stock_price(df_prices, row):
     stock_price = date_prices[stock_name].values[0]
     if(stock_name == "STK001"):
         stock_price = date_prices["STK001_outlier"].values[0]
-        stock_price = np.exp(stock_price)
 
     return stock_price
 
@@ -184,6 +183,9 @@ def merge_tables(df_trades, df_prices, df_customers, df_stocks, df_dates):
         "industry":"stock_industry"
         })
     merged_df = pd.merge(merged_df, df_stocks_joinable, on="stock_ticker", how="inner")
+
+    # since total_trade_amount has 10.5% outliers
+    merged_df["total_trade_amount"] = np.log(merged_df["total_trade_amount"])
     
     return merged_df
 
@@ -249,6 +251,9 @@ def main():
         dfs["stocks"],
         dfs["dates"]
     )
+    
+
+
 
     print("\nSaving merged dataframe...")
     save_to_db(merged_df,'merged_df_final')
