@@ -1,0 +1,114 @@
+Prompt 1: 
+I want you to generate a dataset description document for a trading and portfolio dataset. 
+This dataset contains 10,000 rows and 16 features, which are [transaction_id, timestamp, customer_id, 
+stock_ticker, transaction_type, quantity, average_trade_size, stock_price, total_trade_amount, 
+customer_account_type, day_name, is_weekend, is_holiday, stock_liquidity_tier, stock_sector, stock_industry] 
+These features were gathered from separate datasets that had data from early 2023 to late 2024 
+merged into one final dataset. Give a short description about the dataset, and explain each feature 
+in a single sentence in a table. If you will provide examples for possible values, put it in another 
+column in the table. Do not provide values for numeric attributes. Provide the raw markdown for your answer.
+
+Response 1:
+
+```markdown
+# Trading and Portfolio Dataset Description
+
+This dataset contains **10,000 rows and 16 features** representing simulated trading and portfolio transactions from **early 2023 to late 2024**.  
+The data was created by merging multiple financial and customer datasets to capture trading behavior, portfolio composition, and market activity across different stock sectors and account types.  
+Each record corresponds to a single transaction event made by a customer in a specific stock on a given day, including contextual information about time, trade size, and market conditions.
+
+---
+
+## Feature Description
+
+| Feature Name | Description | Example Values |
+|---------------|--------------|----------------|
+| **transaction_id** | Unique identifier for each trading transaction. | — |
+| **timestamp** | Exact date and time when the transaction occurred. | `2024-05-18 14:32:45` |
+| **customer_id** | Unique identifier assigned to each customer participating in trades. | — |
+| **stock_ticker** | The symbol representing the traded stock on the market. | `AAPL`, `GOOG`, `TSLA` |
+| **transaction_type** | Type of transaction executed by the customer. | `Buy`, `Sell` |
+| **quantity** | Number of shares traded in the transaction. | — |
+| **average_trade_size** | Average number of shares traded by the same customer across transactions. | — |
+| **stock_price** | Price per share of the stock at the time of the transaction. | — |
+| **total_trade_amount** | Total value of the trade calculated as quantity × stock_price. | — |
+| **customer_account_type** | Classification of the customer’s trading account. | `Retail`, `Institutional`, `VIP` |
+| **day_name** | Day of the week when the transaction took place. | `Monday`, `Tuesday`, `Friday` |
+| **is_weekend** | Indicates whether the transaction occurred during the weekend (binary flag). | `0`, `1` |
+| **is_holiday** | Indicates if the trading day coincided with a public or market holiday. | `0`, `1` |
+| **stock_liquidity_tier** | Categorization of the stock based on trading volume and liquidity. | `High`, `Medium`, `Low` |
+| **stock_sector** | The economic sector the traded stock belongs to. | `Technology`, `Healthcare`, `Finance` |
+| **stock_industry** | The specific industry classification of the traded stock. | `Software`, `Pharmaceuticals`, `Banking` |
+
+---
+```
+
+Prompt 2:
+For stock_ticker, the examples should be STKxxx, where xxx is some number between 001 and 020. 
+The date does not include time. Customer account type does not have VIP. 
+There were not multiple datasets, just a single dataset of each type merged into one. 
+Finally, align the | in the markdown so that they are on top on another, and remove the line above feature description
+
+Response 2:
+```markdown
+# Trading and Portfolio Dataset Description
+
+This dataset contains **10,000 rows and 16 features** representing trading and portfolio transactions from **early 2023 to late 2024**.  
+The data was compiled by merging several single-source datasets of different types — including trading records, customer profiles, and market data — into one unified dataset.  
+Each record corresponds to a single transaction made by a customer in a specific stock on a given date, capturing details about trading behavior, market conditions, and stock characteristics.
+
+## Feature Description
+
+| Feature Name            | Description                                                                 | Example Values             |
+|--------------------------|------------------------------------------------------------------------------|-----------------------------|
+| **transaction_id**       | Unique identifier for each trading transaction.                             | —                           |
+| **timestamp**            | Date when the transaction occurred.                                         | `2024-05-18`                |
+| **customer_id**          | Unique identifier assigned to each customer participating in trades.        | —                           |
+| **stock_ticker**         | The symbol representing the traded stock on the market.                     | `STK001`, `STK010`, `STK020` |
+| **transaction_type**     | Type of transaction executed by the customer.                               | `Buy`, `Sell`               |
+| **quantity**             | Number of shares traded in the transaction.                                 | —                           |
+| **average_trade_size**   | Average number of shares traded by the same customer across transactions.   | —                           |
+| **stock_price**          | Price per share of the stock at the time of the transaction.                | —                           |
+| **total_trade_amount**   | Total value of the trade calculated as quantity × stock_price.              | —                           |
+| **customer_account_type**| Classification of the customer’s trading account.                           | `Retail`, `Institutional`   |
+| **day_name**             | Day of the week when the transaction took place.                            | `Monday`, `Tuesday`, `Friday` |
+| **is_weekend**           | Indicates whether the transaction occurred during the weekend (binary flag).| `0`, `1`                    |
+| **is_holiday**           | Indicates if the trading day coincided with a public or market holiday.     | `0`, `1`                    |
+| **stock_liquidity_tier** | Categorization of the stock based on trading volume and liquidity.           | `High`, `Medium`, `Low`     |
+| **stock_sector**         | The economic sector the traded stock belongs to.                            | `Technology`, `Healthcare`, `Finance` |
+| **stock_industry**       | The specific industry classification of the traded stock.                   | `Software`, `Pharmaceuticals`, `Banking` |
+```
+
+Prompt 3:
+Add another column for what the datatype is, and for the IDs have some integer value less than 5000.
+The is_x columns are booleans, so reflect that in your examples.
+
+Response 3: 
+```markdown
+# Trading and Portfolio Dataset Description
+
+This dataset contains **10,000 rows and 16 features** representing trading and portfolio transactions from **early 2023 to late 2024**.  
+The data was compiled by merging several single-source datasets of different types — including trading records, customer profiles, and market data — into one unified dataset.  
+Each record corresponds to a single transaction made by a customer in a specific stock on a given date, capturing details about trading behavior, market conditions, and stock characteristics.
+
+## Feature Description
+
+| Feature Name             | Description                                                                 | Data Type  | Example Values                |
+|---------------------------|------------------------------------------------------------------------------|-------------|--------------------------------|
+| **transaction_id**        | Unique identifier for each trading transaction.                             | Integer     | `2451`                         |
+| **timestamp**             | Date when the transaction occurred.                                         | Date        | `2024-05-18`                   |
+| **customer_id**           | Unique identifier assigned to each customer participating in trades.        | Integer     | `1327`                         |
+| **stock_ticker**          | The symbol representing the traded stock on the market.                     | String      | `STK001`, `STK010`, `STK020`   |
+| **transaction_type**      | Type of transaction executed by the customer.                               | String      | `Buy`, `Sell`                  |
+| **quantity**              | Number of shares traded in the transaction.                                 | Integer     | —                              |
+| **average_trade_size**    | Average number of shares traded by the same customer across transactions.   | Float       | —                              |
+| **stock_price**           | Price per share of the stock at the time of the transaction.                | Float       | —                              |
+| **total_trade_amount**    | Total value of the trade calculated as quantity × stock_price.              | Float       | —                              |
+| **customer_account_type** | Classification of the customer’s trading account.                           | String      | `Retail`, `Institutional`      |
+| **day_name**              | Day of the week when the transaction took place.                            | String      | `Monday`, `Tuesday`, `Friday`  |
+| **is_weekend**            | Indicates whether the transaction occurred during the weekend.              | Boolean     | `True`, `False`                |
+| **is_holiday**            | Indicates if the trading day coincided with a public or market holiday.     | Boolean     | `True`, `False`                |
+| **stock_liquidity_tier**  | Categorization of the stock based on trading volume and liquidity.           | String      | `High`, `Medium`, `Low`        |
+| **stock_sector**          | The economic sector the traded stock belongs to.                            | String      | `Technology`, `Healthcare`, `Finance` |
+| **stock_industry**        | The specific industry classification of the traded stock.                   | String      | `Software`, `Pharmaceuticals`, `Banking` |
+```
