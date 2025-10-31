@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import os
 from db_utils import save_to_db
 
 # reading csv
@@ -184,11 +185,14 @@ def save_df(df, file_name):
     print(f"{file_name} has been saved!")
 
 def main():
-    df_trades = read_csv('datasets/trades.csv')
-    df_prices = read_csv('datasets/daily_trade_prices.csv')
-    df_customers = read_csv('datasets/dim_customer.csv')
-    df_stocks = read_csv('datasets/dim_stock.csv')
-    df_dates = read_csv('datasets/dim_date.csv')
+    base_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "datasets")
+
+    df_trades = pd.read_csv(os.path.join(base_path, "trades.csv"))
+    df_prices = pd.read_csv(os.path.join(base_path, "daily_trade_prices.csv"))
+    df_customers = pd.read_csv(os.path.join(base_path, "dim_customer.csv"))
+    df_stocks = pd.read_csv(os.path.join(base_path, "dim_stock.csv"))
+    df_dates = pd.read_csv(os.path.join(base_path, "dim_date.csv"))
+
     # do not use the above variables at any point, only use the ones in the dict below
     dfs = {
         "trades": df_trades,
