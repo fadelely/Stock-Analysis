@@ -35,5 +35,8 @@ Each record corresponds to a single transaction made by a customer in a specific
 * **pgAdmin web interface** (`pg_admin`)
 * **Main analysis app** (`stock-analysis`)
 
+### To run after building
+` docker compose up -d`
+
 ### Stop All Services
 `docker compose down`
