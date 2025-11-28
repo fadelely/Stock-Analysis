@@ -25,6 +25,23 @@ Each record corresponds to a single transaction made by a customer in a specific
 | **stock_sector**          | The economic sector the traded stock belongs to.                            | String      | `Technology`, `Healthcare`, `Finance` |
 | **stock_industry**        | The specific industry classification of the traded stock.                   | String      | `Software`, `Pharmaceuticals`, `Banking` |
 
+Most of the categorical features were encoded, with their lookup table being seen below. One hot encoded features are put in a single row for the sake of space.
+
+| Column Name            | Original Value       | Encoded Value |
+|------------------------|-------------------|---------------|
+| transaction_type       | BUY               | 1             |
+| transaction_type       | SELL              | 0             |
+| customer_account_type  | Retail            | 1             |
+| customer_account_type  | Institutional     | 0             |
+| is_weekend             | True              | 1             |
+| is_weekend             | False             | 0             |
+| is_holiday             | True              | 1             |
+| is_holiday             | False             | 0             |
+| stock_ticker           | STK001 – STK020   | 1             |
+| day_name               | Monday – Friday   | 1             |
+| stock_sector           | Consumer, Energy, Finance, Healthcare, Technology | 1 |
+| stock_industry         | Asset Management, Hardware, Oil & Gas, Pharmaceuticals, Renewables, Retail, Software, Utilities | 1 |
+
 
 # Running with Docker Compose
 ### Build and Start All Services

@@ -182,6 +182,108 @@ def merge_tables(df_trades, df_prices, df_customers, df_stocks, df_dates):
     
     return merged_df
 
+def encode_data(df):
+    df_encode = df.copy()
+
+    # one-hot encode columns that have more than 2 values and have no importance in order
+    df_one_hot_encoded = pd.get_dummies(
+        df_encode, 
+        columns=["stock_ticker", "day_name", "stock_sector", "stock_industry"]
+    )
+
+    # encode both transaction type and customer account type to 1/0 since they are only two possible values
+    df_encoded_trans = df_one_hot_encoded.copy()
+    df_encoded_trans["transaction_type"] = df_encoded_trans["transaction_type"].map({"BUY": 1, "SELL": 0})
+    df_encoded_account = df_encoded_trans.copy()
+    df_encoded_account["customer_account_type"] = df_encoded_account["customer_account_type"].map({"Retail": 1, "Institutional": 0})
+
+    # convert the true/false to 1/0, but is this really necessary?
+    # also replaces spaces with _ and lower cases the entire column name for consistency :)
+    one_hot_cols = [col for col in df_one_hot_encoded.columns 
+              if col.startswith("stock_ticker_") 
+              or col.startswith("day_name_") 
+              or col.startswith("stock_sector_") 
+              or col.startswith("stock_industry_")
+              or col.startswith("is_")]
+    df_final = df_encoded_account.copy()
+    df_final[one_hot_cols] = df_final[one_hot_cols].astype(int)
+    df_final.rename(columns={col: col.lower().replace(" ", "_") for col in one_hot_cols}, inplace=True)
+
+    return df_final
+
+def create_lookup_table(df):
+    lookup_table = pd.DataFrame(columns=["Column Name", "Original Value", "Encoded Value"])
+
+    # lookup table or transaction_type
+    for orig, encoded in {"BUY":1, "SELL":0}.items():
+        lookup_table = pd.concat([
+            lookup_table,
+            pd.DataFrame({
+                "Column Name": ["transaction_type"],
+                "Original Value": [orig],
+                "Encoded Value": [encoded]
+            })
+        ], ignore_index=True)
+
+    # lookup table for customer_account_type 
+    for orig, encoded in {"Retail":1, "Institutional":0}.items():
+        lookup_table = pd.concat([
+            lookup_table,
+            pd.DataFrame({
+                "Column Name": ["customer_account_type"],
+                "Original Value": [orig],
+                "Encoded Value": [encoded]
+            })
+        ], ignore_index=True)
+
+
+
+    # for the boolean columns
+    bool_cols = ["is_weekend", "is_holiday"]
+    for col in bool_cols:
+        for orig, encoded in {True:1, False:0}.items():
+            lookup_table = pd.concat([
+                lookup_table,
+                pd.DataFrame({
+                    "Column Name": [col],
+                    "Original Value": [orig],
+                    "Encoded Value": [encoded]
+                })
+            ], ignore_index=True)
+    one_hot_cols = [col for col in df.columns 
+        if col.startswith("stock_ticker_") 
+        or col.startswith("day_name_") 
+        or col.startswith("stock_sector_") 
+        or col.startswith("stock_industry_")]
+
+    # for the one hot encoded features, this will show 1 for each value, not very useful?
+    for col in one_hot_cols:
+        # since we lowercased it and replaced "_" with " ", we need to seperate it by searching using the prefix
+        for prefix in ["stock_ticker_", "day_name_", "stock_sector_", "stock_industry_"]:
+            if col.startswith(prefix):
+                column_name = prefix[:-1]  
+                original_value = col[len(prefix):]  
+
+                # return the original value to how it was before being lowercased 
+                if prefix == "stock_ticker_":
+                    original_value = original_value.upper()
+                else:
+                    original_value = " ".join([word.capitalize() for word in original_value.split("_")])
+                break
+
+        lookup_table = pd.concat([
+            lookup_table,
+            pd.DataFrame({
+                "Column Name": [column_name], 
+                "Original Value": [original_value],
+                "Encoded Value": [1]  
+            })
+        ], ignore_index=True)
+
+    return lookup_table
+
+
+
 
 def main():
     base_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "datasets")
@@ -252,12 +354,15 @@ def main():
     )
     
     pd.set_option('display.max_columns', None)
-    print(merged_df)
 
-
+    encoded_df = encode_data(merged_df)
+    lookup_table = create_lookup_table(encoded_df)
+    print(lookup_table)
 
     print("\nSaving merged dataframe...")
-    save_to_db(merged_df,'merged_df_final')
+    save_to_db(encoded_df,'merged_df_final')
+
+
 
 
 if __name__ == "__main__":
