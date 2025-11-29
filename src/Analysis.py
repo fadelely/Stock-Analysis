@@ -193,11 +193,27 @@ def encode_data(df):
 
     # encode both transaction type and customer account type to 1/0 since they are only two possible values
     df_encoded_trans = df_one_hot_encoded.copy()
-    df_encoded_trans["transaction_type"] = df_encoded_trans["transaction_type"].map({"BUY": 1, "SELL": 0})
+    df_encoded_trans["transaction_type"] = df_encoded_trans["transaction_type"].map({"BUY": 1, "SELL": 0}).astype(int)
     df_encoded_account = df_encoded_trans.copy()
-    df_encoded_account["customer_account_type"] = df_encoded_account["customer_account_type"].map({"Retail": 1, "Institutional": 0})
+    df_encoded_account["customer_account_type"] = df_encoded_account["customer_account_type"].map({"Retail": 1, "Institutional": 0}).astype(int)
+    # both stock liquidty and average trade were also label encoded even though it is not required by the milestone document, done for the sake of consistency
+    df_encoded_average = df_encoded_account.copy()
+    df_encoded_average["average_trade_size"] = df_encoded_average["average_trade_size"].map({
+        "Small": 0,
+        "Medium": 1,
+        "Large": 2,
+        "Very Large": 3,
+        "Extreme": 4
+    }).astype(int)
+    df_encoded_stock = df_encoded_average.copy()
+    df_encoded_stock["stock_liquidity_tier"] = df_encoded_stock["stock_liquidity_tier"].map({
+        "Low":0,
+        "Mid":1,
+        "High":2
+    }).astype(int)
 
-    # convert the true/false to 1/0, but is this really necessary?
+
+    # convert the true/false to 1/0
     # also replaces spaces with _ and lower cases the entire column name for consistency :)
     one_hot_cols = [col for col in df_one_hot_encoded.columns 
               if col.startswith("stock_ticker_") 
@@ -205,7 +221,7 @@ def encode_data(df):
               or col.startswith("stock_sector_") 
               or col.startswith("stock_industry_")
               or col.startswith("is_")]
-    df_final = df_encoded_account.copy()
+    df_final = df_encoded_stock.copy()
     df_final[one_hot_cols] = df_final[one_hot_cols].astype(int)
     df_final.rename(columns={col: col.lower().replace(" ", "_") for col in one_hot_cols}, inplace=True)
 
@@ -236,6 +252,7 @@ def create_lookup_table(df):
             })
         ], ignore_index=True)
 
+    # for th
 
 
     # for the boolean columns
@@ -250,35 +267,6 @@ def create_lookup_table(df):
                     "Encoded Value": [encoded]
                 })
             ], ignore_index=True)
-    one_hot_cols = [col for col in df.columns 
-        if col.startswith("stock_ticker_") 
-        or col.startswith("day_name_") 
-        or col.startswith("stock_sector_") 
-        or col.startswith("stock_industry_")]
-
-    # for the one hot encoded features, this will show 1 for each value, not very useful?
-    for col in one_hot_cols:
-        # since we lowercased it and replaced "_" with " ", we need to seperate it by searching using the prefix
-        for prefix in ["stock_ticker_", "day_name_", "stock_sector_", "stock_industry_"]:
-            if col.startswith(prefix):
-                column_name = prefix[:-1]  
-                original_value = col[len(prefix):]  
-
-                # return the original value to how it was before being lowercased 
-                if prefix == "stock_ticker_":
-                    original_value = original_value.upper()
-                else:
-                    original_value = " ".join([word.capitalize() for word in original_value.split("_")])
-                break
-
-        lookup_table = pd.concat([
-            lookup_table,
-            pd.DataFrame({
-                "Column Name": [column_name], 
-                "Original Value": [original_value],
-                "Encoded Value": [1]  
-            })
-        ], ignore_index=True)
 
     return lookup_table
 
