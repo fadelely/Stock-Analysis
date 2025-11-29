@@ -25,22 +25,35 @@ Each record corresponds to a single transaction made by a customer in a specific
 | **stock_sector**          | The economic sector the traded stock belongs to.                            | String      | `Technology`, `Healthcare`, `Finance` |
 | **stock_industry**        | The specific industry classification of the traded stock.                   | String      | `Software`, `Pharmaceuticals`, `Banking` |
 
-Most of the categorical features were encoded, with their lookup table being seen below. One hot encoded features are put in a single row for the sake of space.
+Most of the categorical features were encoded, with their lookup table being seen below.
 
-| Column Name            | Original Value       | Encoded Value |
-|------------------------|-------------------|---------------|
-| transaction_type       | BUY               | 1             |
-| transaction_type       | SELL              | 0             |
-| customer_account_type  | Retail            | 1             |
-| customer_account_type  | Institutional     | 0             |
-| is_weekend             | True              | 1             |
-| is_weekend             | False             | 0             |
-| is_holiday             | True              | 1             |
-| is_holiday             | False             | 0             |
-| stock_ticker           | STK001 – STK020   | 1             |
-| day_name               | Monday – Friday   | 1             |
-| stock_sector           | Consumer, Energy, Finance, Healthcare, Technology | 1 |
-| stock_industry         | Asset Management, Hardware, Oil & Gas, Pharmaceuticals, Renewables, Retail, Software, Utilities | 1 |
+| Column Name            | Original Value                                        | Encoded Value |
+|------------------------|------------------------------------------------------|---------------|
+| transaction_type       | BUY                                                  | 1             |
+| transaction_type       | SELL                                                 | 0             |
+| customer_account_type  | Retail                                               | 1             |
+| customer_account_type  | Institutional                                        | 0             |
+| stock_liquidity_tier   | Low                                                  | 0             |
+| stock_liquidity_tier   | Mid                                                  | 1             |
+| stock_liquidity_tier   | High                                                 | 2             |
+| average_trade_size     | Small                                                | 0             |
+| average_trade_size     | Medium                                               | 1             |
+| average_trade_size     | Large                                                | 2             |
+| average_trade_size     | Very Large                                           | 3             |
+| average_trade_size     | Extreme                                              | 4             |
+| is_weekend             | True                                                 | 1             |
+| is_weekend             | False                                                | 0             |
+| is_holiday             | True                                                 | 1             |
+| is_holiday             | False                                                | 0             |
+
+Below are the features that are one hot encoded, with all of the possible values for that feature.
+| Column Name     | Original Values (Categories)                                 | Encoding Type |
+|-----------------|-------------------------------------------------------------|---------------|
+| stock_ticker    | STK001 – STK020                                             | One-Hot       |
+| day_name        | Monday, Tuesday, Wednesday, Thursday, Friday               | One-Hot       |
+| stock_sector    | Consumer, Energy, Finance, Healthcare, Technology          | One-Hot       |
+| stock_industry  | Asset Management, Hardware, Oil & Gas, Pharmaceuticals,    | One-Hot       |
+|                 | Renewables, Retail, Software, Utilities                     | One-Hot       |
 
 
 # Running with Docker Compose

@@ -231,29 +231,45 @@ def create_lookup_table(df):
     lookup_table = pd.DataFrame(columns=["Column Name", "Original Value", "Encoded Value"])
 
     # lookup table or transaction_type
-    for orig, encoded in {"BUY":1, "SELL":0}.items():
-        lookup_table = pd.concat([
-            lookup_table,
-            pd.DataFrame({
-                "Column Name": ["transaction_type"],
-                "Original Value": [orig],
-                "Encoded Value": [encoded]
-            })
-        ], ignore_index=True)
+    lookup_table = pd.concat([
+        lookup_table,
+        pd.DataFrame({
+            "Column Name": ["transaction_type", "transaction_type"],
+            "Original Value": ["BUY", "SELL"],
+            "Encoded Value": [1, 0]
+        })
+    ], ignore_index=True)
+
 
     # lookup table for customer_account_type 
-    for orig, encoded in {"Retail":1, "Institutional":0}.items():
-        lookup_table = pd.concat([
-            lookup_table,
-            pd.DataFrame({
-                "Column Name": ["customer_account_type"],
-                "Original Value": [orig],
-                "Encoded Value": [encoded]
-            })
-        ], ignore_index=True)
+    lookup_table = pd.concat([
+        lookup_table,
+        pd.DataFrame({
+            "Column Name": ["customer_account_type", "customer_account_type"],
+            "Original Value": ["Retail", "Institutional"],
+            "Encoded Value": [1, 0]
+        })
+    ], ignore_index=True)
 
-    # for th
+    # add stock_liquidity_tier
+    lookup_table = pd.concat([
+        lookup_table,
+        pd.DataFrame({
+            "Column Name": ["stock_liquidity_tier", "stock_liquidity_tier", "stock_liquidity_tier"],
+            "Original Value": ["Low", "Mid", "High"],
+            "Encoded Value": [0, 1, 2]
+        })
+    ], ignore_index=True)
 
+    # add average_trade_size
+    lookup_table = pd.concat([
+        lookup_table,
+        pd.DataFrame({
+            "Column Name": ["average_trade_size"] * 5,
+            "Original Value": ["Small", "Medium", "Large", "Very Large", "Extreme"],
+            "Encoded Value": [0, 1, 2, 3, 4]
+        })
+    ], ignore_index=True)
 
     # for the boolean columns
     bool_cols = ["is_weekend", "is_holiday"]
