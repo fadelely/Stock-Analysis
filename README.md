@@ -25,7 +25,7 @@ Each record corresponds to a single transaction made by a customer in a specific
 | **stock_sector**          | The economic sector the traded stock belongs to.                            | String      | `Technology`, `Healthcare`, `Finance` |
 | **stock_industry**        | The specific industry classification of the traded stock.                   | String      | `Software`, `Pharmaceuticals`, `Banking` |
 
-Most of the categorical features were encoded, with their lookup table being seen below.
+Each of the categorical features were encoded, with their lookup table being seen below.
 
 | Column Name            | Original Value                                        | Encoded Value |
 |------------------------|------------------------------------------------------|---------------|
