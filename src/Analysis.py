@@ -287,9 +287,15 @@ def create_lookup_table(df):
     return lookup_table
 
 
+def kafka_stream_setup(df):
+    stream_df = df.sample(frac=0.05, random_state=42)
+    df_remaining = df.drop(stream_df.index)
+    stream_df.to_csv("stream.csv", index=False)
+    return df_remaining 
 
 
 def main():
+    pd.set_option('display.max_columns', None)
     base_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "datasets")
 
     df_trades = pd.read_csv(os.path.join(base_path, "trades.csv"))
@@ -356,12 +362,13 @@ def main():
         dfs["stocks"],
         dfs["dates"]
     )
-    
-    pd.set_option('display.max_columns', None)
 
-    encoded_df = encode_data(merged_df)
+    print("\nRemoving 5% of merged dataset to stream later...") 
+    remaining_df = kafka_stream_setup(merged_df)
+
+    print("\nEncoding categorical features...")
+    encoded_df = encode_data(remaining_df)
     lookup_table = create_lookup_table(encoded_df)
-    print(lookup_table)
 
     print("\nSaving merged dataframe...")
     save_to_db(encoded_df,'merged_df_final')
