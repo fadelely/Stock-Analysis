@@ -313,7 +313,16 @@ def encode_row(row, lookup_table, df_columns):
 
     # this sets all the one hot encoded values to 1 initially, then aligns the row with the 
     # original datagram columns, adding the missing columns with 0s
-    row_one_hot_encoded = pd.get_dummies(row, columns=["stock_ticker", "day_name", "stock_sector", "stock_industry"])
+    one_hot_encoded_cols = ["stock_ticker", "day_name", "stock_sector", "stock_industry"]
+    row_one_hot_encoded = pd.get_dummies(row, columns=one_hot_encoded_cols)
+    # get the newly created one hot encoded columns, and have it be consistent with the final dataframe 
+    # which is turning all spaces to "_", lower casing all letters, and turning True/False to 1/0
+    one_hot_columns_created = [col for col in row_one_hot_encoded.columns 
+                            if any(col.startswith(prefix + "_") for prefix in one_hot_encoded_cols)]
+    row_one_hot_encoded[one_hot_columns_created] = row_one_hot_encoded[one_hot_columns_created].astype(int)
+    row_one_hot_encoded.rename(columns={col: col.lower().replace(" ", "_") for col in one_hot_columns_created}, inplace=True)
+
+    # add the missing one-hot encoded columns to the row
     row_aligned = row_one_hot_encoded.reindex(columns=df_columns, fill_value=0)
     return row_aligned
     
