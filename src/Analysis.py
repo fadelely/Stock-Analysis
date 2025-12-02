@@ -305,12 +305,11 @@ def kafka_stream_setup(df):
 
 def encode_row(row, lookup_table, df_columns):
     # this does the label encoding, just searches up its values in the lookup table
-    for col in row.index:
+    for col in row.columns:
         filtered_lookup = lookup_table[lookup_table["Column Name"] == col]
         if not filtered_lookup.empty:
             mapping_dict = filtered_lookup.set_index('Original Value')['Encoded Value'].to_dict()
-            row[col] = int(mapping_dict[row[col]])
-
+            row[col] = int(mapping_dict[row[col].iloc[0]])
     # this sets all the one hot encoded values to 1 initially, then aligns the row with the 
     # original datagram columns, adding the missing columns with 0s
     one_hot_encoded_cols = ["stock_ticker", "day_name", "stock_sector", "stock_industry"]
