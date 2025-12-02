@@ -2,12 +2,9 @@ import numpy as np
 import pandas as pd
 import os
 from db_utils import save_to_db, load_from_db
-from kafka import KafkaConsumer, KafkaProducer
+from kafka import KafkaConsumer
 import json
 import time
-import logging
-import sys
-#logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 
 
 
@@ -298,7 +295,12 @@ def create_lookup_table(df):
 def kafka_stream_setup(df):
     stream_df = df.sample(frac=0.05, random_state=42)
     df_remaining = df.drop(stream_df.index)
-    stream_df.to_csv("stream.csv", index=False)
+
+    saved_dataset_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "merged_datasets")
+    os.makedirs(saved_dataset_path, exist_ok=True)
+    stream_csv_path = os.path.join(saved_dataset_path, "stream.csv")
+    stream_df.to_csv(stream_csv_path, index=False)
+
     return df_remaining 
 
 def encode_row(row, lookup_table, df_columns):
@@ -318,6 +320,9 @@ def encode_row(row, lookup_table, df_columns):
 
 def process_stream(lookup_table):
     df = load_from_db()
+    saved_dataset_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "merged_datasets")
+    os.makedirs(saved_dataset_path, exist_ok=True)
+    full_stocks_csv_path = os.path.join(saved_dataset_path, "FULL_STOCKS.csv")
 
     consumer = KafkaConsumer(
         "55_2803_55_10541_Topic",
@@ -337,7 +342,7 @@ def process_stream(lookup_table):
         row = pd.DataFrame([row])
         encode_row(row, lookup_table, df.columns)
         df = pd.concat([df, row], ignore_index=True)
-        df.to_csv('./FULL_STOCKS.csv', index=False)
+        df.to_csv(full_stocks_csv_path, index=False)
     
     save_to_db(df, "merged_df_final")
     print("Stream ended, closing consumer...")
