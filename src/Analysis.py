@@ -1,7 +1,15 @@
 import numpy as np
 import pandas as pd
 import os
-from db_utils import save_to_db
+from db_utils import save_to_db, load_from_db
+from kafka import KafkaConsumer, KafkaProducer
+import json
+import time
+import logging
+import sys
+#logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
+
+
 
 # reading csv
 def read_csv(file_path):
@@ -293,6 +301,48 @@ def kafka_stream_setup(df):
     stream_df.to_csv("stream.csv", index=False)
     return df_remaining 
 
+def encode_row(row, lookup_table, df_columns):
+    # this does the label encoding, just searches up its values in the lookup table
+    for col in row.index:
+        filtered_lookup = lookup_table[lookup_table["Column Name"] == col]
+        if not filtered_lookup.empty:
+            mapping_dict = filtered_lookup.set_index('Original Value')['Encoded Value'].to_dict()
+            row[col] = int(mapping_dict[row[col]])
+
+    # this sets all the one hot encoded values to 1 initially, then aligns the row with the 
+    # original datagram columns, adding the missing columns with 0s
+    row_one_hot_encoded = pd.get_dummies(row, columns=["stock_ticker", "day_name", "stock_sector", "stock_industry"])
+    row_aligned = row_one_hot_encoded.reindex(columns=df_columns, fill_value=0)
+    return row_aligned
+    
+
+def process_stream(lookup_table):
+    df = load_from_db()
+
+    consumer = KafkaConsumer(
+        "55_2803_55_10541_Topic",
+        bootstrap_servers='kafka:29092',
+        auto_offset_reset='latest',
+        group_id=None,
+        value_deserializer=lambda x: json.loads(x.decode('utf-8'))
+    )
+
+    print("Listening for messages in '55_2803_55_10541_Topic'...")
+    for message in consumer:
+        row = message.value
+        print(f"Received: {row}")
+        if row =='EOF':
+            print("EOF received, stopping consumer.")
+            break
+        row = pd.DataFrame([row])
+        encode_row(row, lookup_table, df.columns)
+        df = pd.concat([df, row], ignore_index=True)
+        df.to_csv('./FULL_STOCKS.csv', index=False)
+    
+    save_to_db(df, "merged_df_final")
+    print("Stream ended, closing consumer...")
+
+    consumer.close()
 
 def main():
     pd.set_option('display.max_columns', None)
@@ -372,6 +422,14 @@ def main():
 
     print("\nSaving merged dataframe...")
     save_to_db(encoded_df,'merged_df_final')
+
+
+    print("\nProcessing stream...")
+    df_before_stream = load_from_db()
+    print(f"Before streaming, the dataframe has {df_before_stream.shape[0]} rows")
+    process_stream(lookup_table)
+    df_after_stream = load_from_db()
+    print(f"After streaming, the dataframe has {df_after_stream.shape[0]} rows")
 
 
 

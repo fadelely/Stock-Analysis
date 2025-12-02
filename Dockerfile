@@ -16,4 +16,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # run the analysis
-CMD ["python", "src/Analysis.py"]
+#CMD ["python", "src/Analysis.py"]
+CMD ["python", "-u", "src/Analysis.py"]
