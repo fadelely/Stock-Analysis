@@ -1,6 +1,7 @@
 from sqlalchemy import create_engine, text
 import psycopg2
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
+import pandas as pd
 
 def create_database():
     try:
@@ -44,3 +45,15 @@ def save_to_db(cleaned, table_name):
         print("Cleaned table already exists")
     except Exception as ex:
         print(f"Error saving to database: {ex}")
+
+    
+def load_from_db():
+    engine = create_engine("postgresql://root:root@pgdatabase:5432/stockanalysis")
+    try:
+        print("Reading from database")
+        df = pd.read_sql("SELECT * FROM merged_df_final", engine)
+        return df
+        
+    except Exception as e:
+        print(f"Error reading from database: {e}")
+        return None

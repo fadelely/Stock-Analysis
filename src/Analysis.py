@@ -1,7 +1,12 @@
 import numpy as np
 import pandas as pd
 import os
-from db_utils import save_to_db
+from db_utils import save_to_db, load_from_db
+from kafka import KafkaConsumer
+import json
+import time
+
+
 
 # reading csv
 def read_csv(file_path):
@@ -287,9 +292,73 @@ def create_lookup_table(df):
     return lookup_table
 
 
+def kafka_stream_setup(df):
+    stream_df = df.sample(frac=0.05, random_state=42)
+    df_remaining = df.drop(stream_df.index)
 
+    saved_dataset_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "merged_datasets")
+    os.makedirs(saved_dataset_path, exist_ok=True)
+    stream_csv_path = os.path.join(saved_dataset_path, "stream.csv")
+    stream_df.to_csv(stream_csv_path, index=False)
+
+    return df_remaining 
+
+def encode_row(row, lookup_table, df_columns):
+    # this does the label encoding, just searches up its values in the lookup table
+    for col in row.columns:
+        filtered_lookup = lookup_table[lookup_table["Column Name"] == col]
+        if not filtered_lookup.empty:
+            mapping_dict = filtered_lookup.set_index('Original Value')['Encoded Value'].to_dict()
+            row[col] = int(mapping_dict[row[col].iloc[0]])
+    # this sets all the one hot encoded values to 1 initially, then aligns the row with the 
+    # original datagram columns, adding the missing columns with 0s
+    one_hot_encoded_cols = ["stock_ticker", "day_name", "stock_sector", "stock_industry"]
+    row_one_hot_encoded = pd.get_dummies(row, columns=one_hot_encoded_cols)
+    # get the newly created one hot encoded columns, and have it be consistent with the final dataframe 
+    # which is turning all spaces to "_", lower casing all letters, and turning True/False to 1/0
+    one_hot_columns_created = [col for col in row_one_hot_encoded.columns 
+                            if any(col.startswith(prefix + "_") for prefix in one_hot_encoded_cols)]
+    row_one_hot_encoded[one_hot_columns_created] = row_one_hot_encoded[one_hot_columns_created].astype(int)
+    row_one_hot_encoded.rename(columns={col: col.lower().replace(" ", "_") for col in one_hot_columns_created}, inplace=True)
+
+    # add the missing one-hot encoded columns to the row
+    row_aligned = row_one_hot_encoded.reindex(columns=df_columns, fill_value=0)
+    return row_aligned
+    
+
+def process_stream(lookup_table):
+    df = load_from_db()
+    saved_dataset_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "merged_datasets")
+    os.makedirs(saved_dataset_path, exist_ok=True)
+    full_stocks_csv_path = os.path.join(saved_dataset_path, "FULL_STOCKS.csv")
+
+    consumer = KafkaConsumer(
+        "55_2803_55_10541_Topic",
+        bootstrap_servers='kafka:29092',
+        auto_offset_reset='latest',
+        group_id=None,
+        value_deserializer=lambda x: json.loads(x.decode('utf-8'))
+    )
+
+    print("Listening for messages in '55_2803_55_10541_Topic'...")
+    for message in consumer:
+        row = message.value
+        print(f"Received: {row}")
+        if row =='EOF':
+            print("EOF received, stopping consumer.")
+            break
+        row = pd.DataFrame([row])
+        encoded_row = encode_row(row, lookup_table, df.columns)
+        df = pd.concat([df, encoded_row], ignore_index=True)
+        df.to_csv(full_stocks_csv_path, index=False)
+    
+    save_to_db(df, "merged_df_final")
+    print("Stream ended, closing consumer...")
+
+    consumer.close()
 
 def main():
+    pd.set_option('display.max_columns', None)
     base_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "datasets")
 
     df_trades = pd.read_csv(os.path.join(base_path, "trades.csv"))
@@ -356,15 +425,24 @@ def main():
         dfs["stocks"],
         dfs["dates"]
     )
-    
-    pd.set_option('display.max_columns', None)
 
-    encoded_df = encode_data(merged_df)
+    print("\nRemoving 5% of merged dataset to stream later...") 
+    remaining_df = kafka_stream_setup(merged_df)
+
+    print("\nEncoding categorical features...")
+    encoded_df = encode_data(remaining_df)
     lookup_table = create_lookup_table(encoded_df)
-    print(lookup_table)
 
     print("\nSaving merged dataframe...")
     save_to_db(encoded_df,'merged_df_final')
+
+
+    print("\nProcessing stream...")
+    df_before_stream = load_from_db()
+    print(f"Before streaming, the dataframe has {df_before_stream.shape[0]} rows")
+    process_stream(lookup_table)
+    df_after_stream = load_from_db()
+    print(f"After streaming, the dataframe has {df_after_stream.shape[0]} rows")
 
 
 

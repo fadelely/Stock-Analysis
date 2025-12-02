@@ -4,3 +4,4 @@ pyyaml
 requests
 sqlalchemy
 psycopg2-binary
+kafka-python-ng
