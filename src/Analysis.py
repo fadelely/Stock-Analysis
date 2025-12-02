@@ -348,8 +348,8 @@ def process_stream(lookup_table):
             print("EOF received, stopping consumer.")
             break
         row = pd.DataFrame([row])
-        encode_row(row, lookup_table, df.columns)
-        df = pd.concat([df, row], ignore_index=True)
+        encoded_row = encode_row(row, lookup_table, df.columns)
+        df = pd.concat([df, encoded_row], ignore_index=True)
         df.to_csv(full_stocks_csv_path, index=False)
     
     save_to_db(df, "merged_df_final")
