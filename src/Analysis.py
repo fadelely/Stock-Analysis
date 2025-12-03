@@ -6,6 +6,7 @@ from kafka import KafkaConsumer
 import json
 import time
 from pyspark.sql import SparkSession
+from pyspark.sql import functions as F
 from pyspark.sql.functions import col, sum as _sum, avg, desc, count
 
 
@@ -367,11 +368,24 @@ def run_spark_analysis(lookup_table):
         "is_holiday"
     ]
 
+    lookup_spark_df = spark.createDataFrame(lookup_table)
     for colname in label_columns:
-        mappings = lookup_table[lookup_table["Column Name"] == colname]
-        if len(mappings) > 0:
-            mapping_dict = dict(zip(mappings["Encoded Value"], mappings["Original Value"]))
-            df_spark = df_spark.replace(mapping_dict, subset=[colname])
+        current_lookup_df = lookup_spark_df.filter(col("Column Name") == colname).select(
+                                        col("Encoded Value").alias(f"{colname}_KEY"),
+                                        col("Original Value").alias(f"{colname}_DECODED")
+                                    )
+
+        df_spark = df_spark.alias("d").join(
+            current_lookup_df.alias("l"),
+            col(f"d.{colname}") == col(f"l.{colname}_KEY"),
+            "left"
+        )
+
+        df_spark = df_spark.drop(col(f"d.{colname}")) \
+                        .withColumnRenamed(f"{colname}_DECODED", colname) \
+                        .drop(f"{colname}_KEY")
+        
+        df_spark = df_spark.alias("d")
 
     # Decode ONE-HOT columns
     onehot_groups = {
@@ -387,9 +401,9 @@ def run_spark_analysis(lookup_table):
             expr = "CASE "
             for colname in onehot_cols:
                 category = colname[len(prefix):]
-                expr += f"WHEN {colname}=1 THEN '{category}' "
+                expr += f"WHEN `{colname}`=1 THEN '{category}' "
             expr += "END"
-            df_spark = df_spark.withColumn(new_col, expr)
+            df_spark = df_spark.withColumn(new_col, F.expr(expr))
 
     print("Showing sample of decoded Spark DataFrame:")
     df_spark.show(10)
@@ -586,10 +600,10 @@ def main():
 
     print("\nProcessing stream...")
     df_before_stream = load_from_db()
-    print(f"Before streaming, the dataframe has {df_before_stream.shape[0]} rows")
-    process_stream(lookup_table)
-    df_after_stream = load_from_db()
-    print(f"After streaming, the dataframe has {df_after_stream.shape[0]} rows")
+    # print(f"Before streaming, the dataframe has {df_before_stream.shape[0]} rows")
+    # process_stream(lookup_table)
+    # df_after_stream = load_from_db()
+    # print(f"After streaming, the dataframe has {df_after_stream.shape[0]} rows")
 
     print("\nStarting Spark Analysis...")
     run_spark_analysis(lookup_table)
