@@ -2,17 +2,25 @@ services:
   main:
     build: .
     container_name: stock-analysis
+    hostname: stock-analysis
+    #mem_limit: 2g
     volumes:
       - ./:/app
-      # - ./app/src:/app/src
-      # - ./app/data/app/data
+      - shared-data:/app/merged_datasets
     restart: "on-failure"
     depends_on:
-      - pgdatabase
-      - pgadmin
-      - kafka
-      - spark-master
-
+      pgdatabase:
+        condition: service_healthy
+      pgadmin:
+        condition: service_started
+      kafka:
+        condition: service_started
+      spark-master:
+        condition: service_started
+    environment:
+      - SPARK_MASTER=spark://spark-master:7077
+    command: python3 /app/src/Analysis.py
+    
   pgdatabase:
     image: postgres:13
     container_name: pgdatabase
@@ -24,6 +32,11 @@ services:
       - 5454:5432
     volumes:
       - ./app/volumes/data_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U root -d stockanalysis"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
   
   pgadmin:
     image: dpage/pgadmin4
@@ -38,6 +51,7 @@ services:
     restart: on-failure
     volumes:
       - ./app/volumes/pgadmin_data:/var/lib/pgadmin
+
   zookeeper:
     image: confluentinc/cp-zookeeper:7.4.0
     container_name: zookeeper
@@ -67,6 +81,8 @@ services:
   spark-master:
     image: quay.io/jupyter/pyspark-notebook:2024-10-14
     container_name: spark-master
+    volumes:
+      - shared-data:/app/merged_datasets
     command: >
       bash -c "
         mkdir -p /tmp/spark-logs &&
@@ -86,6 +102,8 @@ services:
   spark-worker:
     image: quay.io/jupyter/pyspark-notebook:2024-10-14
     container_name: spark-worker
+    volumes:
+      - shared-data:/app/merged_datasets
     command: >
       bash -c "
         mkdir -p /tmp/spark-logs /tmp/spark-work &&
@@ -104,3 +122,6 @@ services:
       - SPARK_WORKER_MEMORY=2g
       - SPARK_WORKER_WEBUI_PORT=8081
       - SPARK_MASTER=spark://spark-master:7077
+
+volumes:
+  shared-data:
