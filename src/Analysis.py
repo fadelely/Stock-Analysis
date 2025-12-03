@@ -584,11 +584,11 @@ def main():
     print("\nSaving merged dataframe...")
     save_to_db(encoded_df,'merged_df_final')
     
-    saved_dataset_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "merged_datasets")
-    os.makedirs(saved_dataset_path, exist_ok=True)
-    full_stocks_csv_path = os.path.join(saved_dataset_path, "FULL_STOCKS.csv")
-    encoded_df.to_csv(full_stocks_csv_path, index=False)
-    print(f"Saved initial dataset to {full_stocks_csv_path}")
+    # saved_dataset_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "merged_datasets")
+    # os.makedirs(saved_dataset_path, exist_ok=True)
+    # full_stocks_csv_path = os.path.join(saved_dataset_path, "FULL_STOCKS.csv")
+    # encoded_df.to_csv(full_stocks_csv_path, index=False)
+    # print(f"Saved initial dataset to {full_stocks_csv_path}")
 
     print("\nProcessing stream...")
     df_before_stream = load_from_db()
