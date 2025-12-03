@@ -9,17 +9,12 @@ services:
       - shared-data:/app/merged_datasets
     restart: "on-failure"
     depends_on:
-      pgdatabase:
-        condition: service_healthy
-      pgadmin:
-        condition: service_started
-      kafka:
-        condition: service_started
-      spark-master:
-        condition: service_started
+      - pgdatabase
+      - pgadmin
+      - kafka
+      - spark-master
     environment:
       - SPARK_MASTER=spark://spark-master:7077
-    command: python3 /app/src/Analysis.py
     
   pgdatabase:
     image: postgres:13
@@ -32,11 +27,6 @@ services:
       - 5454:5432
     volumes:
       - ./app/volumes/data_postgres:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U root -d stockanalysis"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
   
   pgadmin:
     image: dpage/pgadmin4
