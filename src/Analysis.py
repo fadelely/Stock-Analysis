@@ -335,18 +335,7 @@ def run_spark_analysis(lookup_table):
         .appName("StockAnalysis") \
         .master("spark://spark-master:7077") \
         .config("spark.driver.host", "stock-analysis") \
-        .config("spark.driver.memory", "512m") \
         .getOrCreate()
-    # spark= SparkSession.builder \
-    #     .appName("SparkAppName") \
-    #     .master("spark://spark-master:7077") \
-    #     .getOrCreate()
-    
-    # Remove this local mode:
-    # spark = SparkSession.builder \
-    #     .appName("Stock Analysis") \
-    #     .master("local[*]") \
-    #     .getOrCreate()
 
     file_path = os.path.join(
         os.path.dirname(os.path.dirname(__file__)),
@@ -600,10 +589,10 @@ def main():
 
     print("\nProcessing stream...")
     df_before_stream = load_from_db()
-    # print(f"Before streaming, the dataframe has {df_before_stream.shape[0]} rows")
-    # process_stream(lookup_table)
-    # df_after_stream = load_from_db()
-    # print(f"After streaming, the dataframe has {df_after_stream.shape[0]} rows")
+    print(f"Before streaming, the dataframe has {df_before_stream.shape[0]} rows")
+    process_stream(lookup_table)
+    df_after_stream = load_from_db()
+    print(f"After streaming, the dataframe has {df_after_stream.shape[0]} rows")
 
     print("\nStarting Spark Analysis...")
     run_spark_analysis(lookup_table)
