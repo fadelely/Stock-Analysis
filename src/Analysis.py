@@ -413,9 +413,15 @@ def run_spark_analysis(lookup_table):
 
     # 3  buy vs sell transactions occurred on weekends
     print("Buy vs Sell transactions on weekends:")
-    df_spark.groupBy("is_weekend", "transaction_type") \
+    df_spark.filter(col("is_weekend") == 'True') \
+            .groupBy("transaction_type") \
             .count() \
             .show()
+    
+    # print("Buy vs Sell transactions on weekends:")
+    # df_spark.groupBy("is_weekend", "transaction_type") \
+    #         .count() \
+    #         .show()
 
     # 4  customers have made more than 10 transactions
     print("Customers with more than 10 transactions:")
