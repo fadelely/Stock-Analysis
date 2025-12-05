@@ -47,11 +47,11 @@ def save_to_db(cleaned, table_name):
         print(f"Error saving to database: {ex}")
 
     
-def load_from_db():
+def load_from_db(table_name):
     engine = create_engine("postgresql://root:root@pgdatabase:5432/stockanalysis")
     try:
-        print("Reading from database")
-        df = pd.read_sql("SELECT * FROM merged_df_final", engine)
+        print(f"Reading from {table_name}")
+        df = pd.read_sql(f"SELECT * FROM {table_name}", engine)
         return df
         
     except Exception as e:

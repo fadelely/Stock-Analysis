@@ -482,8 +482,7 @@ def run_spark_analysis(lookup_table):
     spark.stop()
 
 
-def process_stream(lookup_table):
-    df = load_from_db()
+def process_stream(lookup_table, df):
     saved_dataset_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "merged_datasets")
     os.makedirs(saved_dataset_path, exist_ok=True)
     full_stocks_csv_path = os.path.join(saved_dataset_path, "FULL_STOCKS.csv")
@@ -508,7 +507,7 @@ def process_stream(lookup_table):
         df = pd.concat([df, encoded_row], ignore_index=True)
         df.to_csv(full_stocks_csv_path, index=False)
     
-    save_to_db(df, "merged_df_final")
+    save_to_db(df, "encoded_df_final")
     print("Stream ended, closing consumer...")
 
     consumer.close()
@@ -581,6 +580,9 @@ def main():
         dfs["dates"]
     )
 
+    print("\nSaving merged dataframe...")
+    save_to_db(merged_df,'merged_df_final')
+
     print("\nRemoving 5% of merged dataset to stream later...") 
     remaining_df = kafka_stream_setup(merged_df)
 
@@ -588,14 +590,11 @@ def main():
     encoded_df = encode_data(remaining_df)
     lookup_table = create_lookup_table(encoded_df)
 
-    print("\nSaving merged dataframe...")
-    save_to_db(encoded_df,'merged_df_final')
-
     print("\nProcessing stream...")
-    df_before_stream = load_from_db()
+    df_before_stream = encoded_df
     print(f"Before streaming, the dataframe has {df_before_stream.shape[0]} rows")
-    process_stream(lookup_table)
-    df_after_stream = load_from_db()
+    process_stream(lookup_table, encoded_df)
+    df_after_stream = load_from_db("encoded_df_final")
     print(f"After streaming, the dataframe has {df_after_stream.shape[0]} rows")
 
     print("\nStarting Spark Analysis...")
