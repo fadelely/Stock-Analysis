@@ -437,10 +437,10 @@ def main():
 
     print("\nProcessing stream...")
     df_before_stream = encoded_df
-    # print(f"Before streaming, the dataframe has {df_before_stream.shape[0]} rows")
-    # process_stream(lookup_table, encoded_df)
-    # df_after_stream = load_from_db("encoded_df_final")
-    # print(f"After streaming, the dataframe has {df_after_stream.shape[0]} rows")
+    print(f"Before streaming, the dataframe has {df_before_stream.shape[0]} rows")
+    process_stream(lookup_table, encoded_df)
+    df_after_stream = load_from_db("encoded_df_final")
+    print(f"After streaming, the dataframe has {df_after_stream.shape[0]} rows")
 
     print("\nStarting Spark Analysis...")
     run_spark_analysis(lookup_table)
