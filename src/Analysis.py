@@ -394,24 +394,25 @@ def run_spark_analysis(lookup_table):
             expr += "END"
             df_spark = df_spark.withColumn(new_col, F.expr(expr))
 
+    print("Reversing log transformations for STK001 stock_price and total_trade_amount")
+    df_spark = df_spark.withColumn("stock_price",F.when(col("stock_ticker") == "STK001", F.exp(col("stock_price"))).otherwise(col("stock_price")))
+    df_spark = df_spark.withColumn("total_trade_amount",F.exp(col("total_trade_amount")))
+
     print("Showing sample of decoded Spark DataFrame:")
     df_spark.show(10)
 
     print("3.3.2 SPARK DATAFRAME QUESTIONS")
 
-    # 1  total trading volume for each stock ticker
     print("Total trading volume per stock ticker:")
     df_spark.groupBy("stock_ticker") \
             .agg(_sum("quantity").alias("total_volume")) \
             .show()
 
-    # 2 average stock price per sector
     print("Average stock price per sector:")
     df_spark.groupBy("stock_sector") \
             .agg(avg("stock_price").alias("avg_price")) \
             .show()
 
-    # 3  buy vs sell transactions occurred on weekends
     print("Buy vs Sell transactions on weekends:")
     df_spark.filter(col("is_weekend") == 'True') \
             .groupBy("transaction_type") \
@@ -423,14 +424,12 @@ def run_spark_analysis(lookup_table):
     #         .count() \
     #         .show()
 
-    # 4  customers have made more than 10 transactions
     print("Customers with more than 10 transactions:")
     df_spark.groupBy("customer_id") \
             .count() \
             .filter(col("count") > 10) \
-            .show()
+            .show(n=10000) # default is only 20 rows, so set to a high number to show all
 
-    # 5  total trade amount per day of the week, ordered from highest to lowest
     print("Total trade amount per day of the week:")
     df_spark.groupBy("day_name") \
             .agg(_sum("total_trade_amount").alias("total_amt")) \
@@ -478,7 +477,6 @@ def run_spark_analysis(lookup_table):
         SELECT stock_liquidity_tier, transaction_type, SUM(total_trade_amount) AS total_amt
         FROM stocks
         GROUP BY stock_liquidity_tier, transaction_type
-        ORDER BY stock_liquidity_tier
     """).show()
 
     spark.stop()
