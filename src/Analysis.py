@@ -5,6 +5,9 @@ from db_utils import save_to_db, load_from_db
 from kafka import KafkaConsumer
 import json
 import time
+from pyspark.sql import SparkSession
+from pyspark.sql import functions as F
+from pyspark.sql.functions import col, sum as _sum, avg, desc, count
 
 
 
@@ -325,6 +328,155 @@ def encode_row(row, lookup_table, df_columns):
     row_aligned = row_one_hot_encoded.reindex(columns=df_columns, fill_value=0)
     return row_aligned
     
+def run_spark_analysis(lookup_table):
+    print("Initializing Spark Session...")
+
+    spark = SparkSession.builder \
+        .appName("StockAnalysis") \
+        .master("spark://spark-master:7077") \
+        .config("spark.driver.host", "stock-analysis") \
+        .getOrCreate()
+
+    file_path = os.path.join(
+        os.path.dirname(os.path.dirname(__file__)),
+        "merged_datasets",
+        "FULL_STOCKS.csv"
+    )
+
+    df_spark = spark.read.csv(file_path, header=True, inferSchema=True)
+
+    print("Decoding encoded columns using lookup table...")
+
+    # Decode LABEL-ENCODED columns
+    label_columns = [
+        "transaction_type",
+        "customer_account_type",
+        "average_trade_size",
+        "stock_liquidity_tier",
+        "is_weekend",
+        "is_holiday"
+    ]
+
+    lookup_spark_df = spark.createDataFrame(lookup_table)
+    for colname in label_columns:
+        current_lookup_df = lookup_spark_df.filter(col("Column Name") == colname).select(
+                                        col("Encoded Value").alias(f"{colname}_KEY"),
+                                        col("Original Value").alias(f"{colname}_DECODED")
+                                    )
+
+        df_spark = df_spark.alias("d").join(
+            current_lookup_df.alias("l"),
+            col(f"d.{colname}") == col(f"l.{colname}_KEY"),
+            "left"
+        )
+
+        df_spark = df_spark.drop(col(f"d.{colname}")) \
+                        .withColumnRenamed(f"{colname}_DECODED", colname) \
+                        .drop(f"{colname}_KEY")
+        
+        df_spark = df_spark.alias("d")
+
+    # Decode ONE-HOT columns
+    onehot_groups = {
+        "day_name": "day_name_",
+        "stock_sector": "stock_sector_",
+        "stock_industry": "stock_industry_",
+        "stock_ticker": "stock_ticker_"
+    }
+
+    for new_col, prefix in onehot_groups.items():
+        onehot_cols = [c for c in df_spark.columns if c.startswith(prefix)]
+        if onehot_cols:
+            expr = "CASE "
+            for colname in onehot_cols:
+                category = colname[len(prefix):]
+                expr += f"WHEN `{colname}`=1 THEN '{category}' "
+            expr += "END"
+            df_spark = df_spark.withColumn(new_col, F.expr(expr))
+
+    print("Showing sample of decoded Spark DataFrame:")
+    df_spark.show(10)
+
+    print("3.3.2 SPARK DATAFRAME QUESTIONS")
+
+    # 1  total trading volume for each stock ticker
+    print("Total trading volume per stock ticker:")
+    df_spark.groupBy("stock_ticker") \
+            .agg(_sum("quantity").alias("total_volume")) \
+            .show()
+
+    # 2 average stock price per sector
+    print("Average stock price per sector:")
+    df_spark.groupBy("stock_sector") \
+            .agg(avg("stock_price").alias("avg_price")) \
+            .show()
+
+    # 3  buy vs sell transactions occurred on weekends
+    print("Buy vs Sell transactions on weekends:")
+    df_spark.groupBy("is_weekend", "transaction_type") \
+            .count() \
+            .show()
+
+    # 4  customers have made more than 10 transactions
+    print("Customers with more than 10 transactions:")
+    df_spark.groupBy("customer_id") \
+            .count() \
+            .filter(col("count") > 10) \
+            .show()
+
+    # 5  total trade amount per day of the week, ordered from highest to lowest
+    print("Total trade amount per day of the week:")
+    df_spark.groupBy("day_name") \
+            .agg(_sum("total_trade_amount").alias("total_amt")) \
+            .orderBy(desc("total_amt")) \
+            .show()
+
+    print("3.3.3 SPARK SQL QUESTIONS")
+
+    df_spark.createOrReplaceTempView("stocks")
+
+    print("Top 5 stock tickers by total quantity traded:")
+    spark.sql("""
+        SELECT stock_ticker, SUM(quantity) AS total_qty 
+        FROM stocks 
+        GROUP BY stock_ticker 
+        ORDER BY total_qty DESC 
+        LIMIT 5
+    """).show()
+
+    print("Average total trade amount by customer account type:")
+    spark.sql("""
+        SELECT customer_account_type, AVG(total_trade_amount) AS avg_trade_amt
+        FROM stocks
+        GROUP BY customer_account_type
+    """).show()
+
+    print("Number of transactions on holidays vs non-holidays:")
+    spark.sql("""
+        SELECT is_holiday, COUNT(*) AS trans_count
+        FROM stocks
+        GROUP BY is_holiday
+    """).show()
+
+    print("Total trading volume by stock sector on weekends sorted descendengly to display  highest total first:")
+    spark.sql("""
+        SELECT stock_sector, SUM(quantity) AS total_vol
+        FROM stocks
+        WHERE is_weekend = 'True'
+        GROUP BY stock_sector
+        ORDER BY total_vol DESC
+    """).show()
+
+    print("total buy vs sell amount for each stock liquidity tier")
+    spark.sql("""
+        SELECT stock_liquidity_tier, transaction_type, SUM(total_trade_amount) AS total_amt
+        FROM stocks
+        GROUP BY stock_liquidity_tier, transaction_type
+        ORDER BY stock_liquidity_tier
+    """).show()
+
+    spark.stop()
+
 
 def process_stream(lookup_table):
     df = load_from_db()
@@ -411,7 +563,6 @@ def main():
                 else:
                     print(f"{column} now has less than 10 percent outliers.")
 
-
     print("\nChecking for inconsistencies")
     explore_unique_values(df_trades, df_prices, df_customers, df_stocks, df_dates)
     detect_inconsistencies(df_trades, df_prices, df_customers, df_stocks, df_dates)
@@ -436,13 +587,15 @@ def main():
     print("\nSaving merged dataframe...")
     save_to_db(encoded_df,'merged_df_final')
 
-
     print("\nProcessing stream...")
     df_before_stream = load_from_db()
     print(f"Before streaming, the dataframe has {df_before_stream.shape[0]} rows")
     process_stream(lookup_table)
     df_after_stream = load_from_db()
     print(f"After streaming, the dataframe has {df_after_stream.shape[0]} rows")
+
+    print("\nStarting Spark Analysis...")
+    run_spark_analysis(lookup_table)
 
 
 

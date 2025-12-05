@@ -68,5 +68,8 @@ Below are the features that are one hot encoded, with all of the possible values
 ### To run after building
 ` docker compose up -d`
 
+### To watch logs 
+`docker logs stock-analysis --follow`
+
 ### Stop All Services
 `docker compose down`
