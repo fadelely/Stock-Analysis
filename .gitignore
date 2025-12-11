@@ -13,3 +13,11 @@ __pycache__/
 *.pyc
 
 app/volumes/
+
+# Airflow logs
+logs/
+scheduler/
+
+.env
+
+docker-compose.override.yml

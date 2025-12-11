@@ -1,0 +1,6 @@
+FROM python:3.11-bullseye
+WORKDIR /app
+COPY requirements-streamlit.txt /app/
+RUN pip install --no-cache-dir -r requirements-streamlit.txt
+COPY ./src /app/src
+CMD ["streamlit", "run", "src/main.py", "--server.port=8501", "--server.address=0.0.0.0"]
