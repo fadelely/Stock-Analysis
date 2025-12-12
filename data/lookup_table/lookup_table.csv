@@ -1,0 +1,17 @@
+Column Name,Original Value,Encoded Value
+transaction_type,BUY,1
+transaction_type,SELL,0
+customer_account_type,Retail,1
+customer_account_type,Institutional,0
+stock_liquidity_tier,Low,0
+stock_liquidity_tier,Mid,1
+stock_liquidity_tier,High,2
+average_trade_size,Small,0
+average_trade_size,Medium,1
+average_trade_size,Large,2
+average_trade_size,Very Large,3
+average_trade_size,Extreme,4
+is_weekend,True,1
+is_weekend,False,0
+is_holiday,True,1
+is_holiday,False,0

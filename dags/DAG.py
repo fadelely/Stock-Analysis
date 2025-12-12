@@ -1,20 +1,21 @@
 import pandas as pd
 import numpy as np
 import os
-
-from airflow import DAG
-from airflow.utils.dates import days_ago
-from airflow.operators.bash import BashOperator
-from airflow.operators.python import PythonOperator
-
 from sqlalchemy import create_engine, text
 import psycopg2
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 
+from airflow import DAG
+from airflow.utils.dates import days_ago
+from airflow.utils.task_group import TaskGroup 
+from airflow.operators.bash import BashOperator
+from airflow.operators.python import PythonOperator
+
+
 def clean_missing_values(prices_filename):
     df_prices = pd.read_csv(prices_filename)
     df_filled = df_prices.interpolate(method='linear', axis=0).ffill().bfill()
-    df_filled.to_csv("/opt/airflow/data/staging/daily_trade_prices_filled.csv")
+    df_filled.to_csv("/opt/airflow/data/staging/daily_trade_prices_filled.csv", index=False)
 
 def detect_outliers(prices_filename, customer_filename, date_filename, stock_filename, trades_filename):
     dfs = {}
@@ -85,7 +86,7 @@ def integrate_datasets(prices_filename, customer_filename, date_filename, stock_
     df_trades = pd.read_csv(trades_filename)
 
     merged_df = df_trades.copy()
-    merged_df = merged_df.drop(["cumulative_portfolio_value", "cumulative_portfolio_value", "average_trade_size"], axis=1)
+    merged_df = merged_df.drop(["cumulative_portfolio_value", "cumulative_portfolio_value"], axis=1)
     merged_df = merged_df.rename(columns={"average_trade_size_outlier":"average_trade_size"})
 
     # lambda function since stock_tickers are stored as columns not rows i.e can't do a simple merge
@@ -117,7 +118,7 @@ def integrate_datasets(prices_filename, customer_filename, date_filename, stock_
 
     # since total_trade_amount has 10.5% outliers
     merged_df["total_trade_amount"] = np.log(merged_df["total_trade_amount"])
-    merged_df.to_csv("/opt/airflow/data/cleaned/merged.csv")
+    merged_df.to_csv("/opt/airflow/data/cleaned/merged.csv", index=False)
 
 def load_to_postgres(merged_filepath):
     try:
@@ -162,6 +163,120 @@ def load_to_postgres(merged_filepath):
     except Exception as ex:
         print(f"Error saving to database: {ex}")
 
+
+def prepare_streaming_data(merged_filepath):
+    df = pd.read_csv(merged_filepath)
+    stream_df = df.sample(frac=0.05, random_state=42)
+    df_remaining = df.drop(stream_df.index)
+
+    stream_df.to_csv("/opt/airflow/data/stream/stream.csv", index=False)
+    df_remaining.to_csv("/opt/airflow/data/cleaned/remaining.csv", index=False)
+
+def encode_categorical_data(remaining_filepath):
+    df_encode = pd.read_csv(remaining_filepath)
+
+    # one-hot encode columns that have more than 2 values and have no importance in order
+    df_one_hot_encoded = pd.get_dummies(
+        df_encode, 
+        columns=["stock_ticker", "day_name", "stock_sector", "stock_industry"]
+    )
+
+    # encode both transaction type and customer account type to 1/0 since they are only two possible values
+    df_encoded_trans = df_one_hot_encoded.copy()
+    df_encoded_trans["transaction_type"] = df_encoded_trans["transaction_type"].map({"BUY": 1, "SELL": 0}).astype(int)
+    df_encoded_account = df_encoded_trans.copy()
+    df_encoded_account["customer_account_type"] = df_encoded_account["customer_account_type"].map({"Retail": 1, "Institutional": 0}).astype(int)
+    # both stock liquidty and average trade were also label encoded even though it is not required by the milestone document, done for the sake of consistency
+    df_encoded_average = df_encoded_account.copy()
+    df_encoded_average["average_trade_size"] = df_encoded_average["average_trade_size"].map({
+        "Small": 0,
+        "Medium": 1,
+        "Large": 2,
+        "Very Large": 3,
+        "Extreme": 4
+    }).astype(int)
+    df_encoded_stock = df_encoded_average.copy()
+    df_encoded_stock["stock_liquidity_tier"] = df_encoded_stock["stock_liquidity_tier"].map({
+        "Low":0,
+        "Mid":1,
+        "High":2
+    }).astype(int)
+
+
+    # convert the true/false to 1/0
+    # also replaces spaces with _ and lower cases the entire column name for consistency :)
+    one_hot_cols = [col for col in df_one_hot_encoded.columns 
+              if col.startswith("stock_ticker_") 
+              or col.startswith("day_name_") 
+              or col.startswith("stock_sector_") 
+              or col.startswith("stock_industry_")
+              or col.startswith("is_")]
+    df_final = df_encoded_stock.copy()
+    df_final[one_hot_cols] = df_final[one_hot_cols].astype(int)
+    df_final.rename(columns={col: col.lower().replace(" ", "_") for col in one_hot_cols}, inplace=True)
+
+    df_final.to_csv("/opt/airflow/data/cleaned/df_encoded.csv", index=False)
+
+    lookup_table = pd.DataFrame(columns=["Column Name", "Original Value", "Encoded Value"])
+
+    # lookup table or transaction_type
+    lookup_table = pd.concat([
+        lookup_table,
+        pd.DataFrame({
+            "Column Name": ["transaction_type", "transaction_type"],
+            "Original Value": ["BUY", "SELL"],
+            "Encoded Value": [1, 0]
+        })
+    ], ignore_index=True)
+
+
+    # lookup table for customer_account_type 
+    lookup_table = pd.concat([
+        lookup_table,
+        pd.DataFrame({
+            "Column Name": ["customer_account_type", "customer_account_type"],
+            "Original Value": ["Retail", "Institutional"],
+            "Encoded Value": [1, 0]
+        })
+    ], ignore_index=True)
+
+    # add stock_liquidity_tier
+    lookup_table = pd.concat([
+        lookup_table,
+        pd.DataFrame({
+            "Column Name": ["stock_liquidity_tier", "stock_liquidity_tier", "stock_liquidity_tier"],
+            "Original Value": ["Low", "Mid", "High"],
+            "Encoded Value": [0, 1, 2]
+        })
+    ], ignore_index=True)
+
+    # add average_trade_size
+    lookup_table = pd.concat([
+        lookup_table,
+        pd.DataFrame({
+            "Column Name": ["average_trade_size"] * 5,
+            "Original Value": ["Small", "Medium", "Large", "Very Large", "Extreme"],
+            "Encoded Value": [0, 1, 2, 3, 4]
+        })
+    ], ignore_index=True)
+
+    # for the boolean columns
+    bool_cols = ["is_weekend", "is_holiday"]
+    for col in bool_cols:
+        for orig, encoded in {True:1, False:0}.items():
+            lookup_table = pd.concat([
+                lookup_table,
+                pd.DataFrame({
+                    "Column Name": [col],
+                    "Original Value": [orig],
+                    "Encoded Value": [encoded]
+                })
+            ], ignore_index=True)
+
+    lookup_table.to_csv("/opt/airflow/data/lookup_table/lookup_table.csv", index=False)
+
+
+
 default_args = {
     "owner": "nabila_and_yousef",
     "depends_on_past": False,
@@ -170,51 +285,74 @@ default_args = {
 }
 
 
-
 with DAG(
     dag_id = "stock_portfolio_pipeline_Team_11",
     schedule_interval = '@once', 
     default_args = default_args,
     tags = ['stock-portfolio-pipeline'],
 )as dag:
-    clean_missing_values_task = PythonOperator(
-        task_id = 'clean_missing_values',
-        python_callable = clean_missing_values,
-        op_kwargs = {
-            'prices_filename': '/opt/airflow/data/raw/daily_trade_prices.csv'
-        }
-    )
+    with TaskGroup("Milestone_1", tooltip="Initial Cleaning and Integration") as milestone_1:
+        clean_missing_values_task = PythonOperator(
+            task_id = 'clean_missing_values',
+            python_callable = clean_missing_values,
+            op_kwargs = {
+                'prices_filename': '/opt/airflow/data/raw/daily_trade_prices.csv'
+            }
+        )
 
-    detect_outliers_task = PythonOperator(
-        task_id = 'detect_outliers',
-        python_callable = detect_outliers,
-        op_kwargs = {
-            "prices_filename": "/opt/airflow/data/staging/daily_trade_prices_filled.csv",
-            "customer_filename": "/opt/airflow/data/raw/dim_customer.csv",
-            "date_filename": "/opt/airflow/data/raw/dim_date.csv",
-            "stock_filename": "/opt/airflow/data/raw/dim_stock.csv",
-            "trades_filename": "/opt/airflow/data/raw/trades.csv"
-        }
-    )
+        detect_outliers_task = PythonOperator(
+            task_id = 'detect_outliers',
+            python_callable = detect_outliers,
+            op_kwargs = {
+                "prices_filename": "/opt/airflow/data/staging/daily_trade_prices_filled.csv",
+                "customer_filename": "/opt/airflow/data/raw/dim_customer.csv",
+                "date_filename": "/opt/airflow/data/raw/dim_date.csv",
+                "stock_filename": "/opt/airflow/data/raw/dim_stock.csv",
+                "trades_filename": "/opt/airflow/data/raw/trades.csv"
+            }
+        )
 
-    integrate_datasets_task = PythonOperator(
-        task_id = "integrate_datasets",
-        python_callable = integrate_datasets,
-        op_kwargs = {
-            "prices_filename": "/opt/airflow/data/staging/prices_cleaned.csv",
-            "customer_filename": "/opt/airflow/data/staging/customer_cleaned.csv",
-            "date_filename": "/opt/airflow/data/staging/date_cleaned.csv",
-            "stock_filename": "/opt/airflow/data/staging/stock_cleaned.csv",
-            "trades_filename": "/opt/airflow/data/staging/trades_cleaned.csv"
-        }
-    )
+        integrate_datasets_task = PythonOperator(
+            task_id = "integrate_datasets",
+            python_callable = integrate_datasets,
+            op_kwargs = {
+                "prices_filename": "/opt/airflow/data/staging/prices_cleaned.csv",
+                "customer_filename": "/opt/airflow/data/staging/customer_cleaned.csv",
+                "date_filename": "/opt/airflow/data/staging/date_cleaned.csv",
+                "stock_filename": "/opt/airflow/data/staging/stock_cleaned.csv",
+                "trades_filename": "/opt/airflow/data/staging/trades_cleaned.csv"
+            }
+        )
 
-    load_to_postgres_task = PythonOperator(
-        task_id = "load_to_postgres_merged",
-        python_callable = load_to_postgres,
-        op_kwargs = {
-            "merged_filepath": "/opt/airflow/data/cleaned/merged.csv"
-        }
-    )
+        load_to_postgres_task = PythonOperator(
+            task_id = "load_to_postgres_merged",
+            python_callable = load_to_postgres,
+            op_kwargs = {
+                "merged_filepath": "/opt/airflow/data/cleaned/merged.csv"
+            }
+        )
 
-    clean_missing_values_task >> detect_outliers_task >> integrate_datasets_task >> load_to_postgres_task
+        clean_missing_values_task >> detect_outliers_task >> integrate_datasets_task >> load_to_postgres_task
+    
+    with TaskGroup("Milestone_2", tooltip="Preparing Stream and Encoding Table") as milestone_2_encoding:
+        prepare_streaming_data_task = PythonOperator(
+            task_id = 'extract_5_percent',
+            python_callable = prepare_streaming_data,
+            op_kwargs = {
+                'merged_filepath': '/opt/airflow/data/cleaned/merged.csv'
+
+
+            }
+        )
+        encode_categorical_data_task = PythonOperator(
+            task_id = 'encode_data',
+            python_callable = encode_categorical_data,
+            op_kwargs = {
+                'remaining_filepath': '/opt/airflow/data/cleaned/remaining.csv'
+            }
+        )
+
+        prepare_streaming_data_task >> encode_categorical_data_task
+
+    milestone_1 >> milestone_2_encoding 
+
