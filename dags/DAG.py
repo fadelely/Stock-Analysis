@@ -1,9 +1,14 @@
 import pandas as pd
 import numpy as np
-import os
 from sqlalchemy import create_engine, text
 import psycopg2
-from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
+import os
+import sys
+
+sys.path.append(os.path.join(os.path.dirname(__file__), '../scripts'))
+from Analysis import fill_daily_trade_prices, merge_tables, encode_data, create_lookup_table, get_outlier_percentage, handle_outlier, discretize_average_trade
+import Analysis
+from db_utils import save_to_db
 
 from airflow import DAG
 from airflow.utils.dates import days_ago
@@ -11,269 +16,104 @@ from airflow.utils.task_group import TaskGroup
 from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
 
+# don't think OS basename is neccessary since docker should have the same path no matter the operating system
+BASE_STAGING_PATH = "/opt/airflow/data/staging"
+BASE_CLEAN_PATH   = "/opt/airflow/data/clean"
+BASE_MISC_PATH   = "/opt/airflow/data/misc"
+BASE_RAW_PATH   = "/opt/airflow/data/raw"
 
-def clean_missing_values(prices_filename):
-    df_prices = pd.read_csv(prices_filename)
-    df_filled = df_prices.interpolate(method='linear', axis=0).ffill().bfill()
-    df_filled.to_csv("/opt/airflow/data/staging/daily_trade_prices_filled.csv", index=False)
 
-def detect_outliers(prices_filename, customer_filename, date_filename, stock_filename, trades_filename):
+### TASK GROUP 1 ###
+
+def clean_missing_values(prices_filepath):
+    df_prices = pd.read_csv(prices_filepath)
+    df_filled = fill_daily_trade_prices(df_prices)
+
+    df_path = os.path.join(BASE_STAGING_PATH, "daily_trade_prices_filled.csv")
+    os.makedirs(os.path.dirname(df_path), exist_ok=True)
+    df_filled.to_csv(df_path, index=False)
+
+def detect_outliers(prices_filepath, customer_filepath, date_filepath, stock_filepath, trades_filepath):
     dfs = {}
 
-    dfs["prices"]   = pd.read_csv(prices_filename)
-    dfs["customer"] = pd.read_csv(customer_filename)
-    dfs["date"]     = pd.read_csv(date_filename)
-    dfs["stock"]    = pd.read_csv(stock_filename)
-    dfs["trades"]   = pd.read_csv(trades_filename)
+    dfs["prices"]   = pd.read_csv(prices_filepath)
+    dfs["customer"] = pd.read_csv(customer_filepath)
+    dfs["date"]     = pd.read_csv(date_filepath)
+    dfs["stock"]    = pd.read_csv(stock_filepath)
+    dfs["trades"]   = pd.read_csv(trades_filepath)
 
-
-    for name, df in dfs.items():                   
-        # handle average trade size with binning, otherwise just regular log
-        if name == "trades" and "average_trade_size" in df.columns:
-            labels = ['Small', 'Medium', 'Large', 'Very Large', 'Extreme']
-            bins = [0, 176.27, 201.73, 212.63, 500, df['average_trade_size'].max()]
-            df['average_trade_size'] = pd.cut(
-                df['average_trade_size'],
-                bins=bins,
-                labels=labels,
-                include_lowest=True
-            )
-
-        for column in df.select_dtypes(include=[np.number]).columns:   
-            Q1 = df[column].quantile(0.25)
-            Q3 = df[column].quantile(0.75)
-            IQR = Q3 - Q1
-
-            lowerBound = Q1 - 1.5 * IQR
-            upperBound = Q3 + 1.5 * IQR
-
-            outlier = (df[column] < lowerBound) | (df[column] > upperBound)
-            outlierCount = outlier.sum()
-
-            if outlierCount > 0:
-                percentage = (outlierCount / df[column].count()) * 100
-                percentage = round(percentage, 2)
-
-                if percentage > 10:
-                    if (df[column] == 0).any():
-                        df[column] = np.log1p(df[column])
-                    else:
-                        df[column] = np.log(df[column])
-
-        dfs[name] = df      
-    
-    staging_path = "/opt/airflow/data/staging"
-    os.makedirs(staging_path, exist_ok=True)
 
     for name, df in dfs.items():
-        filename = f"{staging_path}/{name}_cleaned.csv"  
-        df.to_csv(filename, index=False)
+        for column in df.select_dtypes(include='number').columns:
+            outlier_percentage = get_outlier_percentage(dfs[name], column) 
+            if(outlier_percentage > 10):
+                print(f"{column} has outliers! the total percentage is: {outlier_percentage}%")
+                print(f"Handling outliers in {column}...")
 
-def integrate_datasets(prices_filename, customer_filename, date_filename, stock_filename, trades_filename):
-    def get_stock_price(df_prices, row):
-        stock_name = row["stock_ticker"]
-        date = row["timestamp"]
-        date_prices = df_prices[df_prices["date"] == date]
-        stock_price = date_prices[stock_name].values[0]
-        return stock_price
+                if(column == "average_trade_size"):
+                    dfs[name] = discretize_average_trade(dfs[name])
+                    print(f"{column} has been discretized.")
+                    continue
 
-    dfs = {}
+                dfs[name] = handle_outlier(dfs[name], column)
+                outlier_percentage = get_outlier_percentage(dfs[name], column + "_outlier")
+                if(outlier_percentage > 10):
+                    print(f"{column} still has {outlier_percentage}% outliers.")
+                else:
+                    print(f"{column} now has less than 10 percent outliers.")
+    
 
-    df_prices = pd.read_csv(prices_filename)
-    df_customers = pd.read_csv(customer_filename)
-    df_dates = pd.read_csv(date_filename)
-    df_stocks = pd.read_csv(stock_filename)
-    df_trades = pd.read_csv(trades_filename)
 
-    merged_df = df_trades.copy()
-    merged_df = merged_df.drop(["cumulative_portfolio_value", "cumulative_portfolio_value"], axis=1)
-    merged_df = merged_df.rename(columns={"average_trade_size_outlier":"average_trade_size"})
+    for name, df in dfs.items():
+        df_path = os.path.join(BASE_STAGING_PATH, f"{name}_cleaned.csv")
+        os.makedirs(os.path.dirname(df_path), exist_ok=True)
+        df.to_csv(df_path, index=False)
 
-    # lambda function since stock_tickers are stored as columns not rows i.e can't do a simple merge
-    merged_df["stock_price"] = merged_df.apply(lambda row: get_stock_price(df_prices, row), axis=1)
-    merged_df["total_trade_amount"] = merged_df["stock_price"] * merged_df["quantity"]
+def integrate_datasets(prices_filepath, customer_filepath, date_filepath, stock_filepath, trades_filepath):
+    df_prices = pd.read_csv(prices_filepath)
+    df_customers = pd.read_csv(customer_filepath)
+    df_dates = pd.read_csv(date_filepath)
+    df_stocks = pd.read_csv(stock_filepath)
+    df_trades = pd.read_csv(trades_filepath)
 
-    # customer id and key are exactly the same, so a join with either column works
-    df_customers_joinable = df_customers.copy() 
-    df_customers_joinable = df_customers_joinable.drop(["customer_key", "avg_trade_size_baseline"], axis=1)
-    df_customers_joinable = df_customers_joinable.rename(columns={"account_type":"customer_account_type"})
-    # there are customers with no trade inside the csv file, do we completely ignore them or add them as nulls?
-    merged_df = pd.merge(merged_df, df_customers_joinable, on="customer_id", how="inner")
+    merged_df = merge_tables(df_trades, df_prices, df_customers, df_stocks, df_dates)
 
-    # dates has no issues, all dates are accounted for :)
-    df_dates_joinable = df_dates.copy() 
-    df_dates_joinable = df_dates_joinable.rename(columns={"date":"timestamp"})
-    df_dates_joinable = df_dates_joinable.drop(["date_key","day", "month", "month_name", "quarter", "year", "day_of_week"], axis=1)
-    merged_df = pd.merge(merged_df, df_dates_joinable, on="timestamp", how="inner")
-
-    # stocks has no issues, all stocks are accounted for :)
-    df_stocks_joinable = df_stocks.copy()
-    df_stocks_joinable = df_stocks_joinable.drop(["stock_key", "company_name"], axis=1)
-    df_stocks_joinable = df_stocks_joinable.rename(columns={
-        "liquidity_tier":"stock_liquidity_tier",
-        "sector":"stock_sector",
-        "industry":"stock_industry"
-        })
-    merged_df = pd.merge(merged_df, df_stocks_joinable, on="stock_ticker", how="inner")
-
-    # since total_trade_amount has 10.5% outliers
-    merged_df["total_trade_amount"] = np.log(merged_df["total_trade_amount"])
-    merged_df.to_csv("/opt/airflow/data/cleaned/merged.csv", index=False)
+    merged_path = os.path.join(BASE_CLEAN_PATH, "merged.csv")
+    os.makedirs(os.path.dirname(merged_path), exist_ok=True)
+    merged_df.to_csv(merged_path, index=False)
 
 def load_to_postgres(merged_filepath):
-    try:
-        conn = psycopg2.connect(
-            host="pgdatabase",
-            user="root",
-            password="root",
-            port=5432,
-            dbname="postgres"
-        )
-        conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
-        cursor = conn.cursor()
-
-        # Check database existence
-        cursor.execute("SELECT 1 FROM pg_catalog.pg_database WHERE datname = 'stockanalysis'")
-        exists = cursor.fetchone()
-
-        if not exists:
-            cursor.execute("CREATE DATABASE stockanalysis")
-            print("Database created successfully")
-        else:
-            print("Database already exists")
-
-        cursor.close()
-        conn.close()
-
-    except Exception as e:
-        print(f"Error creating database: {e}")
-
     cleaned = pd.read_csv(merged_filepath)
+    save_to_db(cleaned, "merged_df")
 
-    engine = create_engine("postgresql://root:root@pgdatabase:5432/stockanalysis")
 
-    try:
-        with engine.connect() as conn:
-            print("Connected to Database")
-            print("Writing cleaned dataset to database")
-            cleaned.to_sql("merged_df", con=engine, if_exists='replace', index=False)
-            print("Done writing to database")
-    except ValueError:
-        print("Cleaned table already exists")
-    except Exception as ex:
-        print(f"Error saving to database: {ex}")
-
+### TASK GROUP 2 ###
 
 def prepare_streaming_data(merged_filepath):
     df = pd.read_csv(merged_filepath)
     stream_df = df.sample(frac=0.05, random_state=42)
     df_remaining = df.drop(stream_df.index)
 
-    stream_df.to_csv("/opt/airflow/data/stream/stream.csv", index=False)
-    df_remaining.to_csv("/opt/airflow/data/cleaned/remaining.csv", index=False)
+    stream_filepath = os.path.join(BASE_MISC_PATH, "stream.csv")
+    os.makedirs(os.path.dirname(stream_filepath), exist_ok=True)
+    stream_df.to_csv(stream_filepath, index=False)
+
+    df_remaining_filepath = os.path.join(BASE_CLEAN_PATH, "remaining.csv")
+    df_remaining.to_csv(df_remaining_filepath, index=False)
 
 def encode_categorical_data(remaining_filepath):
-    df_encode = pd.read_csv(remaining_filepath)
+    df = pd.read_csv(remaining_filepath)
+    df_encoded = encode_data(df)
 
-    # one-hot encode columns that have more than 2 values and have no importance in order
-    df_one_hot_encoded = pd.get_dummies(
-        df_encode, 
-        columns=["stock_ticker", "day_name", "stock_sector", "stock_industry"]
-    )
+    df_encoded_path = os.path.join(BASE_CLEAN_PATH, "df_encoded.csv")
+    os.makedirs(os.path.dirname(df_encoded_path), exist_ok=True)
+    df_encoded.to_csv(df_encoded_path, index=False)
 
-    # encode both transaction type and customer account type to 1/0 since they are only two possible values
-    df_encoded_trans = df_one_hot_encoded.copy()
-    df_encoded_trans["transaction_type"] = df_encoded_trans["transaction_type"].map({"BUY": 1, "SELL": 0}).astype(int)
-    df_encoded_account = df_encoded_trans.copy()
-    df_encoded_account["customer_account_type"] = df_encoded_account["customer_account_type"].map({"Retail": 1, "Institutional": 0}).astype(int)
-    # both stock liquidty and average trade were also label encoded even though it is not required by the milestone document, done for the sake of consistency
-    df_encoded_average = df_encoded_account.copy()
-    df_encoded_average["average_trade_size"] = df_encoded_average["average_trade_size"].map({
-        "Small": 0,
-        "Medium": 1,
-        "Large": 2,
-        "Very Large": 3,
-        "Extreme": 4
-    }).astype(int)
-    df_encoded_stock = df_encoded_average.copy()
-    df_encoded_stock["stock_liquidity_tier"] = df_encoded_stock["stock_liquidity_tier"].map({
-        "Low":0,
-        "Mid":1,
-        "High":2
-    }).astype(int)
+    lookup_table = create_lookup_table(df_encoded)
 
-
-    # convert the true/false to 1/0
-    # also replaces spaces with _ and lower cases the entire column name for consistency :)
-    one_hot_cols = [col for col in df_one_hot_encoded.columns 
-              if col.startswith("stock_ticker_") 
-              or col.startswith("day_name_") 
-              or col.startswith("stock_sector_") 
-              or col.startswith("stock_industry_")
-              or col.startswith("is_")]
-    df_final = df_encoded_stock.copy()
-    df_final[one_hot_cols] = df_final[one_hot_cols].astype(int)
-    df_final.rename(columns={col: col.lower().replace(" ", "_") for col in one_hot_cols}, inplace=True)
-
-    df_final.to_csv("/opt/airflow/data/cleaned/df_encoded.csv", index=False)
-
-    lookup_table = pd.DataFrame(columns=["Column Name", "Original Value", "Encoded Value"])
-
-    # lookup table or transaction_type
-    lookup_table = pd.concat([
-        lookup_table,
-        pd.DataFrame({
-            "Column Name": ["transaction_type", "transaction_type"],
-            "Original Value": ["BUY", "SELL"],
-            "Encoded Value": [1, 0]
-        })
-    ], ignore_index=True)
-
-
-    # lookup table for customer_account_type 
-    lookup_table = pd.concat([
-        lookup_table,
-        pd.DataFrame({
-            "Column Name": ["customer_account_type", "customer_account_type"],
-            "Original Value": ["Retail", "Institutional"],
-            "Encoded Value": [1, 0]
-        })
-    ], ignore_index=True)
-
-    # add stock_liquidity_tier
-    lookup_table = pd.concat([
-        lookup_table,
-        pd.DataFrame({
-            "Column Name": ["stock_liquidity_tier", "stock_liquidity_tier", "stock_liquidity_tier"],
-            "Original Value": ["Low", "Mid", "High"],
-            "Encoded Value": [0, 1, 2]
-        })
-    ], ignore_index=True)
-
-    # add average_trade_size
-    lookup_table = pd.concat([
-        lookup_table,
-        pd.DataFrame({
-            "Column Name": ["average_trade_size"] * 5,
-            "Original Value": ["Small", "Medium", "Large", "Very Large", "Extreme"],
-            "Encoded Value": [0, 1, 2, 3, 4]
-        })
-    ], ignore_index=True)
-
-    # for the boolean columns
-    bool_cols = ["is_weekend", "is_holiday"]
-    for col in bool_cols:
-        for orig, encoded in {True:1, False:0}.items():
-            lookup_table = pd.concat([
-                lookup_table,
-                pd.DataFrame({
-                    "Column Name": [col],
-                    "Original Value": [orig],
-                    "Encoded Value": [encoded]
-                })
-            ], ignore_index=True)
-
-    lookup_table.to_csv("/opt/airflow/data/lookup_table/lookup_table.csv", index=False)
+    lookup_table_path = os.path.join(BASE_MISC_PATH, "lookup_table.csv")
+    os.makedirs(os.path.dirname(lookup_table_path), exist_ok=True)
+    lookup_table.to_csv(lookup_table_path, index=False)
 
 
 
@@ -296,7 +136,7 @@ with DAG(
             task_id = 'clean_missing_values',
             python_callable = clean_missing_values,
             op_kwargs = {
-                'prices_filename': '/opt/airflow/data/raw/daily_trade_prices.csv'
+                'prices_filepath': f"{BASE_RAW_PATH}/daily_trade_prices.csv"
             }
         )
 
@@ -304,11 +144,11 @@ with DAG(
             task_id = 'detect_outliers',
             python_callable = detect_outliers,
             op_kwargs = {
-                "prices_filename": "/opt/airflow/data/staging/daily_trade_prices_filled.csv",
-                "customer_filename": "/opt/airflow/data/raw/dim_customer.csv",
-                "date_filename": "/opt/airflow/data/raw/dim_date.csv",
-                "stock_filename": "/opt/airflow/data/raw/dim_stock.csv",
-                "trades_filename": "/opt/airflow/data/raw/trades.csv"
+                "prices_filepath": f"{BASE_STAGING_PATH}/daily_trade_prices_filled.csv",
+                "customer_filepath": f"{BASE_RAW_PATH}/dim_customer.csv",
+                "date_filepath": f"{BASE_RAW_PATH}/dim_date.csv",
+                "stock_filepath": f"{BASE_RAW_PATH}/dim_stock.csv",
+                "trades_filepath": f"{BASE_RAW_PATH}/trades.csv"
             }
         )
 
@@ -316,11 +156,11 @@ with DAG(
             task_id = "integrate_datasets",
             python_callable = integrate_datasets,
             op_kwargs = {
-                "prices_filename": "/opt/airflow/data/staging/prices_cleaned.csv",
-                "customer_filename": "/opt/airflow/data/staging/customer_cleaned.csv",
-                "date_filename": "/opt/airflow/data/staging/date_cleaned.csv",
-                "stock_filename": "/opt/airflow/data/staging/stock_cleaned.csv",
-                "trades_filename": "/opt/airflow/data/staging/trades_cleaned.csv"
+                "prices_filepath": f"{BASE_STAGING_PATH}/prices_cleaned.csv",
+                "customer_filepath": f"{BASE_STAGING_PATH}/customer_cleaned.csv",
+                "date_filepath": f"{BASE_STAGING_PATH}/date_cleaned.csv",
+                "stock_filepath": f"{BASE_STAGING_PATH}/stock_cleaned.csv",
+                "trades_filepath": f"{BASE_STAGING_PATH}/trades_cleaned.csv"
             }
         )
 
@@ -328,7 +168,7 @@ with DAG(
             task_id = "load_to_postgres_merged",
             python_callable = load_to_postgres,
             op_kwargs = {
-                "merged_filepath": "/opt/airflow/data/cleaned/merged.csv"
+                "merged_filepath": f"{BASE_CLEAN_PATH}/merged.csv"
             }
         )
 
@@ -339,16 +179,14 @@ with DAG(
             task_id = 'extract_5_percent',
             python_callable = prepare_streaming_data,
             op_kwargs = {
-                'merged_filepath': '/opt/airflow/data/cleaned/merged.csv'
-
-
+                "merged_filepath": f"{BASE_CLEAN_PATH}/merged.csv"
             }
         )
         encode_categorical_data_task = PythonOperator(
             task_id = 'encode_data',
             python_callable = encode_categorical_data,
             op_kwargs = {
-                'remaining_filepath': '/opt/airflow/data/cleaned/remaining.csv'
+                "remaining_filepath": f"{BASE_CLEAN_PATH}/remaining.csv"
             }
         )
 

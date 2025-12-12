@@ -102,7 +102,7 @@ def detect_inconsistencies(df_trades, df_prices, df_customers, df_stocks, df_dat
     if not inconsistent_weekends.empty:
         print(f"- {len(inconsistent_weekends)} inconsistent in weekends")
 
-def fill_daily_trade_prices(df_prices, df_trades):
+def fill_daily_trade_prices(df_prices):
     df_filled = df_prices.copy()
     df_filled = df_filled.interpolate(method='linear', axis=0).ffill().bfill()
     return df_filled
