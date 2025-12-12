@@ -1,0 +1,196 @@
+import pandas as pd
+import numpy as np
+from sqlalchemy import create_engine, text
+import psycopg2
+import os
+import sys
+
+sys.path.append(os.path.join(os.path.dirname(__file__), '../scripts'))
+from Analysis import fill_daily_trade_prices, merge_tables, encode_data, create_lookup_table, get_outlier_percentage, handle_outlier, discretize_average_trade
+import Analysis
+from db_utils import save_to_db
+
+from airflow import DAG
+from airflow.utils.dates import days_ago
+from airflow.utils.task_group import TaskGroup 
+from airflow.operators.bash import BashOperator
+from airflow.operators.python import PythonOperator
+
+# don't think OS basename is neccessary since docker should have the same path no matter the operating system
+BASE_STAGING_PATH = "/opt/airflow/data/staging"
+BASE_CLEAN_PATH   = "/opt/airflow/data/clean"
+BASE_MISC_PATH   = "/opt/airflow/data/misc"
+BASE_RAW_PATH   = "/opt/airflow/data/raw"
+
+
+### TASK GROUP 1 ###
+
+def clean_missing_values(prices_filepath):
+    df_prices = pd.read_csv(prices_filepath)
+    df_filled = fill_daily_trade_prices(df_prices)
+
+    df_path = os.path.join(BASE_STAGING_PATH, "daily_trade_prices_filled.csv")
+    os.makedirs(os.path.dirname(df_path), exist_ok=True)
+    df_filled.to_csv(df_path, index=False)
+
+def detect_outliers(prices_filepath, customer_filepath, date_filepath, stock_filepath, trades_filepath):
+    dfs = {}
+
+    dfs["prices"]   = pd.read_csv(prices_filepath)
+    dfs["customer"] = pd.read_csv(customer_filepath)
+    dfs["date"]     = pd.read_csv(date_filepath)
+    dfs["stock"]    = pd.read_csv(stock_filepath)
+    dfs["trades"]   = pd.read_csv(trades_filepath)
+
+
+    for name, df in dfs.items():
+        for column in df.select_dtypes(include='number').columns:
+            outlier_percentage = get_outlier_percentage(dfs[name], column) 
+            if(outlier_percentage > 10):
+                print(f"{column} has outliers! the total percentage is: {outlier_percentage}%")
+                print(f"Handling outliers in {column}...")
+
+                if(column == "average_trade_size"):
+                    dfs[name] = discretize_average_trade(dfs[name])
+                    print(f"{column} has been discretized.")
+                    continue
+
+                dfs[name] = handle_outlier(dfs[name], column)
+                outlier_percentage = get_outlier_percentage(dfs[name], column + "_outlier")
+                if(outlier_percentage > 10):
+                    print(f"{column} still has {outlier_percentage}% outliers.")
+                else:
+                    print(f"{column} now has less than 10 percent outliers.")
+    
+
+
+    for name, df in dfs.items():
+        df_path = os.path.join(BASE_STAGING_PATH, f"{name}_cleaned.csv")
+        os.makedirs(os.path.dirname(df_path), exist_ok=True)
+        df.to_csv(df_path, index=False)
+
+def integrate_datasets(prices_filepath, customer_filepath, date_filepath, stock_filepath, trades_filepath):
+    df_prices = pd.read_csv(prices_filepath)
+    df_customers = pd.read_csv(customer_filepath)
+    df_dates = pd.read_csv(date_filepath)
+    df_stocks = pd.read_csv(stock_filepath)
+    df_trades = pd.read_csv(trades_filepath)
+
+    merged_df = merge_tables(df_trades, df_prices, df_customers, df_stocks, df_dates)
+
+    merged_path = os.path.join(BASE_CLEAN_PATH, "merged.csv")
+    os.makedirs(os.path.dirname(merged_path), exist_ok=True)
+    merged_df.to_csv(merged_path, index=False)
+
+def load_to_postgres(merged_filepath):
+    cleaned = pd.read_csv(merged_filepath)
+    save_to_db(cleaned, "merged_df")
+
+
+### TASK GROUP 2 ###
+
+def prepare_streaming_data(merged_filepath):
+    df = pd.read_csv(merged_filepath)
+    stream_df = df.sample(frac=0.05, random_state=42)
+    df_remaining = df.drop(stream_df.index)
+
+    stream_filepath = os.path.join(BASE_MISC_PATH, "stream.csv")
+    os.makedirs(os.path.dirname(stream_filepath), exist_ok=True)
+    stream_df.to_csv(stream_filepath, index=False)
+
+    df_remaining_filepath = os.path.join(BASE_CLEAN_PATH, "remaining.csv")
+    df_remaining.to_csv(df_remaining_filepath, index=False)
+
+def encode_categorical_data(remaining_filepath):
+    df = pd.read_csv(remaining_filepath)
+    df_encoded = encode_data(df)
+
+    df_encoded_path = os.path.join(BASE_CLEAN_PATH, "df_encoded.csv")
+    os.makedirs(os.path.dirname(df_encoded_path), exist_ok=True)
+    df_encoded.to_csv(df_encoded_path, index=False)
+
+    lookup_table = create_lookup_table(df_encoded)
+
+    lookup_table_path = os.path.join(BASE_MISC_PATH, "lookup_table.csv")
+    os.makedirs(os.path.dirname(lookup_table_path), exist_ok=True)
+    lookup_table.to_csv(lookup_table_path, index=False)
+
+
+
+default_args = {
+    "owner": "nabila_and_yousef",
+    "depends_on_past": False,
+    "start_date": days_ago(2),
+    "retries": 1
+}
+
+
+with DAG(
+    dag_id = "stock_portfolio_pipeline_Team_11",
+    schedule_interval = '@once', 
+    default_args = default_args,
+    tags = ['stock-portfolio-pipeline'],
+)as dag:
+    with TaskGroup("Milestone_1", tooltip="Initial Cleaning and Integration") as milestone_1:
+        clean_missing_values_task = PythonOperator(
+            task_id = 'clean_missing_values',
+            python_callable = clean_missing_values,
+            op_kwargs = {
+                'prices_filepath': f"{BASE_RAW_PATH}/daily_trade_prices.csv"
+            }
+        )
+
+        detect_outliers_task = PythonOperator(
+            task_id = 'detect_outliers',
+            python_callable = detect_outliers,
+            op_kwargs = {
+                "prices_filepath": f"{BASE_STAGING_PATH}/daily_trade_prices_filled.csv",
+                "customer_filepath": f"{BASE_RAW_PATH}/dim_customer.csv",
+                "date_filepath": f"{BASE_RAW_PATH}/dim_date.csv",
+                "stock_filepath": f"{BASE_RAW_PATH}/dim_stock.csv",
+                "trades_filepath": f"{BASE_RAW_PATH}/trades.csv"
+            }
+        )
+
+        integrate_datasets_task = PythonOperator(
+            task_id = "integrate_datasets",
+            python_callable = integrate_datasets,
+            op_kwargs = {
+                "prices_filepath": f"{BASE_STAGING_PATH}/prices_cleaned.csv",
+                "customer_filepath": f"{BASE_STAGING_PATH}/customer_cleaned.csv",
+                "date_filepath": f"{BASE_STAGING_PATH}/date_cleaned.csv",
+                "stock_filepath": f"{BASE_STAGING_PATH}/stock_cleaned.csv",
+                "trades_filepath": f"{BASE_STAGING_PATH}/trades_cleaned.csv"
+            }
+        )
+
+        load_to_postgres_task = PythonOperator(
+            task_id = "load_to_postgres_merged",
+            python_callable = load_to_postgres,
+            op_kwargs = {
+                "merged_filepath": f"{BASE_CLEAN_PATH}/merged.csv"
+            }
+        )
+
+        clean_missing_values_task >> detect_outliers_task >> integrate_datasets_task >> load_to_postgres_task
+    
+    with TaskGroup("Milestone_2", tooltip="Preparing Stream and Encoding Table") as milestone_2_encoding:
+        prepare_streaming_data_task = PythonOperator(
+            task_id = 'extract_5_percent',
+            python_callable = prepare_streaming_data,
+            op_kwargs = {
+                "merged_filepath": f"{BASE_CLEAN_PATH}/merged.csv"
+            }
+        )
+        encode_categorical_data_task = PythonOperator(
+            task_id = 'encode_data',
+            python_callable = encode_categorical_data,
+            op_kwargs = {
+                "remaining_filepath": f"{BASE_CLEAN_PATH}/remaining.csv"
+            }
+        )
+
+        prepare_streaming_data_task >> encode_categorical_data_task
+
+    milestone_1 >> milestone_2_encoding 
+
