@@ -6,8 +6,8 @@ import os
 import sys
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '../scripts'))
-from Analysis import fill_daily_trade_prices, merge_tables, encode_data, create_lookup_table, get_outlier_percentage, handle_outlier, discretize_average_trade, process_stream
-import Analysis
+from Analysis import fill_daily_trade_prices, merge_tables, encode_data, create_lookup_table, get_outlier_percentage, handle_outlier, discretize_average_trade, process_stream 
+from spark import connect_to_master, run_spark_analysis
 from db_utils import save_to_db
 
 from airflow import DAG
@@ -135,7 +135,11 @@ def save_final_to_postgres(final_df_filepath):
 ### TASK GROUP 4 ###
 
 def intialize_spark_session():
-    print("hi")
+    connect_to_master()
+
+def run_spark_analytics(lookup_table_filepath, final_stocks_filepath):
+    lookup_table = pd.read_csv(lookup_table_filepath)
+    run_spark_analysis(lookup_table, final_stocks_filepath)
 
 default_args = {
     "owner": "nabila_and_yousef",
@@ -211,7 +215,6 @@ with DAG(
         )
 
         prepare_streaming_data_task >> encode_categorical_data_task
-
     
     with TaskGroup("Milestone_2_Streaming", tooltip="Streaming Using Kafka") as milestone_2_streaming:
         start_kafka_producer_task = BashOperator(
@@ -235,6 +238,27 @@ with DAG(
             }
         )
 
-        start_kafka_producer_task >> consume_and_process_stream_task >> save_final_to_postgres_task
-    milestone_1 >> milestone_2_encoding  >> milestone_2_streaming
+        # start_kafka_producer_task >> consume_and_process_stream_task >> save_final_to_postgres_task
+        # TODO DO NOT FORGET TO REVERT THIS DA 3ASHAN PRDOCUER BEY3OD SANATEEN 3OBAL MAY5ALAS
+        consume_and_process_stream_task >> save_final_to_postgres_task
+
+    with TaskGroup("Milestone_2_Spark", tooltip="Analyzing Data with Spark") as milestone_2_spark:
+        initialize_spark_session_task = PythonOperator(
+            task_id = 'intialize_spark',
+            python_callable = intialize_spark_session,
+        )
+
+        run_spark_analytics_task = PythonOperator(
+            task_id = 'analysis_spark',
+            python_callable = run_spark_analytics,
+            op_kwargs = {
+                "lookup_table_filepath": f"{BASE_MISC_PATH}/lookup_table.csv",
+                "final_stocks_filepath": f"{BASE_CLEAN_PATH}/FINAL_STOCKS.csv"
+            }
+        )
+
+        initialize_spark_session_task >> run_spark_analytics_task
+    
+    milestone_1 >> milestone_2_encoding  >> milestone_2_streaming >> milestone_2_spark
+
 
