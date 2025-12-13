@@ -3,7 +3,7 @@ from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.functions import col, sum as _sum, avg, desc, count
 
-def run_spark_analysis(lookup_table):
+def run_spark_analysis(lookup_table, analytics_filepath=None, ):
     print("Initializing Spark Session...")
 
     spark = SparkSession.builder \

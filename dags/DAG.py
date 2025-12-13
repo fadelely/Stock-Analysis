@@ -6,7 +6,7 @@ import os
 import sys
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '../scripts'))
-from Analysis import fill_daily_trade_prices, merge_tables, encode_data, create_lookup_table, get_outlier_percentage, handle_outlier, discretize_average_trade
+from Analysis import fill_daily_trade_prices, merge_tables, encode_data, create_lookup_table, get_outlier_percentage, handle_outlier, discretize_average_trade, process_stream
 import Analysis
 from db_utils import save_to_db
 
@@ -84,7 +84,7 @@ def integrate_datasets(prices_filepath, customer_filepath, date_filepath, stock_
 
 def load_to_postgres(merged_filepath):
     cleaned = pd.read_csv(merged_filepath)
-    save_to_db(cleaned, "merged_df")
+    save_to_db(cleaned, "merged_stocks")
 
 
 ### TASK GROUP 2 ###
@@ -116,6 +116,26 @@ def encode_categorical_data(remaining_filepath):
     lookup_table.to_csv(lookup_table_path, index=False)
 
 
+### TASK GROUP 3 ###
+
+def consume_and_process_stream(lookup_table_filepath, encoded_filepath):
+    df = pd.read_csv(encoded_filepath)
+    lookup_table = pd.read_csv(lookup_table_filepath)
+    final_df = process_stream(lookup_table=lookup_table, df=df)
+
+    final_df_path = os.path.join(BASE_CLEAN_PATH, "FINAL_STOCKS.csv")
+    os.makedirs(os.path.dirname(final_df_path), exist_ok=True)
+    final_df.to_csv(final_df_path, index=False)
+
+def save_final_to_postgres(final_df_filepath):
+    df = pd.read_csv(final_df_filepath)
+    save_to_db(df, "final_stocks")
+
+
+### TASK GROUP 4 ###
+
+def intialize_spark_session():
+    print("hi")
 
 default_args = {
     "owner": "nabila_and_yousef",
@@ -174,7 +194,7 @@ with DAG(
 
         clean_missing_values_task >> detect_outliers_task >> integrate_datasets_task >> load_to_postgres_task
     
-    with TaskGroup("Milestone_2", tooltip="Preparing Stream and Encoding Table") as milestone_2_encoding:
+    with TaskGroup("Milestone_2_Encoding", tooltip="Preparing Stream and Encoding Table") as milestone_2_encoding:
         prepare_streaming_data_task = PythonOperator(
             task_id = 'extract_5_percent',
             python_callable = prepare_streaming_data,
@@ -192,5 +212,29 @@ with DAG(
 
         prepare_streaming_data_task >> encode_categorical_data_task
 
-    milestone_1 >> milestone_2_encoding 
+    
+    with TaskGroup("Milestone_2_Streaming", tooltip="Streaming Using Kafka") as milestone_2_streaming:
+        start_kafka_producer_task = BashOperator(
+            task_id = "start_kafka_producer",
+            bash_command = "python /opt/airflow/scripts/kafka_producer.py"
+        )
+        consume_and_process_stream_task = PythonOperator(
+            task_id = 'consume_kafka',
+            python_callable = consume_and_process_stream,
+            op_kwargs = {
+                "lookup_table_filepath": f"{BASE_MISC_PATH}/lookup_table.csv",
+                "encoded_filepath": f"{BASE_CLEAN_PATH}/df_encoded.csv"
+            }
+        )
+        save_final_to_postgres_task = PythonOperator(
+            task_id = 'save_final_to_postgres',
+            python_callable = save_final_to_postgres,
+            op_kwargs = {
+                "final_df_filepath": f"{BASE_CLEAN_PATH}/FINAL_STOCKS.csv"
+
+            }
+        )
+
+        start_kafka_producer_task >> consume_and_process_stream_task >> save_final_to_postgres_task
+    milestone_1 >> milestone_2_encoding  >> milestone_2_streaming
 

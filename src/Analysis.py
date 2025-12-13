@@ -297,7 +297,7 @@ def kafka_stream_setup(df):
     stream_df = df.sample(frac=0.05, random_state=42)
     df_remaining = df.drop(stream_df.index)
 
-    saved_dataset_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "merged_datasets")
+    saved_dataset_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "misc")
     os.makedirs(saved_dataset_path, exist_ok=True)
     stream_csv_path = os.path.join(saved_dataset_path, "stream.csv")
     stream_df.to_csv(stream_csv_path, index=False)
@@ -310,7 +310,7 @@ def encode_row(row, lookup_table, df_columns):
         filtered_lookup = lookup_table[lookup_table["Column Name"] == col]
         if not filtered_lookup.empty:
             mapping_dict = filtered_lookup.set_index('Original Value')['Encoded Value'].to_dict()
-            row[col] = int(mapping_dict[row[col].iloc[0]])
+            row[col] = int(mapping_dict[str(row[col].iloc[0])])
     # this sets all the one hot encoded values to 1 initially, then aligns the row with the 
     # original datagram columns, adding the missing columns with 0s
     one_hot_encoded_cols = ["stock_ticker", "day_name", "stock_sector", "stock_industry"]
@@ -328,14 +328,10 @@ def encode_row(row, lookup_table, df_columns):
     
 
 def process_stream(lookup_table, df):
-    saved_dataset_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "merged_datasets")
-    os.makedirs(saved_dataset_path, exist_ok=True)
-    full_stocks_csv_path = os.path.join(saved_dataset_path, "FULL_STOCKS.csv")
-
     consumer = KafkaConsumer(
         "55_2803_55_10541_Topic",
         bootstrap_servers='kafka:29092',
-        auto_offset_reset='latest',
+        auto_offset_reset='earliest',
         group_id=None,
         value_deserializer=lambda x: json.loads(x.decode('utf-8'))
     )
@@ -350,12 +346,11 @@ def process_stream(lookup_table, df):
         row = pd.DataFrame([row])
         encoded_row = encode_row(row, lookup_table, df.columns)
         df = pd.concat([df, encoded_row], ignore_index=True)
-        df.to_csv(full_stocks_csv_path, index=False)
     
-    save_to_db(df, "encoded_df_final")
     print("Stream ended, closing consumer...")
-
     consumer.close()
+
+    return df
 
 def main():
     pd.set_option('display.max_columns', None)
