@@ -73,3 +73,15 @@ Below are the features that are one hot encoded, with all of the possible values
 
 ### Stop All Services
 `docker compose down`
+
+
+### 
+Airflow UI: http://localhost:8080
+Streamlit: http://localhost:8501
+
+
+### agent 
+python3 agent/ai_agent.py
+
+add to the .env 
+HF_TOKEN= ...
