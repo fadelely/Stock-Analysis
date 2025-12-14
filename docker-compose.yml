@@ -189,7 +189,8 @@ services:
       - ./logs:/opt/airflow/logs
       - ./plugins:/opt/airflow/plugins
       - ./data:/opt/airflow/data
-      - ./src:/opt/airflow/scripts
+      - ./src:/opt/airflow/scripts/src
+      - ./agent:/opt/airflow/scripts/agent
     depends_on:
       redis:
         condition: service_healthy
@@ -215,7 +216,8 @@ services:
       - ./logs:/opt/airflow/logs
       - ./plugins:/opt/airflow/plugins
       - ./data:/opt/airflow/data
-      - ./src:/opt/airflow/scripts
+      - ./src:/opt/airflow/scripts/src
+      - ./agent:/opt/airflow/scripts/agent
     depends_on:
       redis:
         condition: service_healthy
@@ -241,7 +243,8 @@ services:
       - ./logs:/opt/airflow/logs
       - ./plugins:/opt/airflow/plugins
       - ./data:/opt/airflow/data
-      - ./src:/opt/airflow/scripts
+      - ./src:/opt/airflow/scripts/src
+      - ./agent:/opt/airflow/scripts/agent
     depends_on:
       redis:
         condition: service_healthy
@@ -269,7 +272,8 @@ services:
       - ./logs:/opt/airflow/logs
       - ./plugins:/opt/airflow/plugins
       - ./data:/opt/airflow/data
-      - ./src:/opt/airflow/scripts
+      - ./src:/opt/airflow/scripts/src
+      - ./agent:/opt/airflow/scripts/agent
     depends_on:
       redis:
         condition: service_healthy

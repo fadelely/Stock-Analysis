@@ -5,10 +5,13 @@ import psycopg2
 import os
 import sys
 
-sys.path.append(os.path.join(os.path.dirname(__file__), '../scripts'))
-from Analysis import fill_daily_trade_prices, merge_tables, encode_data, create_lookup_table, get_outlier_percentage, handle_outlier, discretize_average_trade
-import Analysis
+# there's some way to add them using docker instead of using sys but too lazy 
+sys.path.append(os.path.join(os.path.dirname(__file__), '../scripts/src'))
+sys.path.append(os.path.join(os.path.dirname(__file__), '../scripts/agent'))
+from Analysis import fill_daily_trade_prices, merge_tables, encode_data, create_lookup_table, get_outlier_percentage, handle_outlier, discretize_average_trade, process_stream 
+from spark import connect_to_master, run_spark_analysis
 from db_utils import save_to_db
+from ai_agent import process_with_ai_agent
 
 from airflow import DAG
 from airflow.utils.dates import days_ago
@@ -84,7 +87,7 @@ def integrate_datasets(prices_filepath, customer_filepath, date_filepath, stock_
 
 def load_to_postgres(merged_filepath):
     cleaned = pd.read_csv(merged_filepath)
-    save_to_db(cleaned, "merged_df")
+    save_to_db(cleaned, "merged_stocks")
 
 
 ### TASK GROUP 2 ###
@@ -116,6 +119,31 @@ def encode_categorical_data(remaining_filepath):
     lookup_table.to_csv(lookup_table_path, index=False)
 
 
+### TASK GROUP 3 ###
+
+def consume_and_process_stream(lookup_table_filepath, encoded_filepath):
+    df = pd.read_csv(encoded_filepath)
+    lookup_table = pd.read_csv(lookup_table_filepath)
+    final_df = process_stream(lookup_table=lookup_table, df=df)
+
+    final_df_path = os.path.join(BASE_CLEAN_PATH, "FINAL_STOCKS.csv")
+    os.makedirs(os.path.dirname(final_df_path), exist_ok=True)
+    final_df.to_csv(final_df_path, index=False)
+
+def save_final_to_postgres(final_df_filepath):
+    df = pd.read_csv(final_df_filepath)
+    save_to_db(df, "final_stocks")
+
+
+### TASK GROUP 4 ###
+
+def intialize_spark_session():
+    connect_to_master()
+
+def run_spark_analytics(lookup_table_filepath, final_stocks_filepath):
+    lookup_table = pd.read_csv(lookup_table_filepath)
+    final_stocks = pd.read_csv(final_stocks_filepath)
+    run_spark_analysis(lookup_table, final_stocks)
 
 default_args = {
     "owner": "nabila_and_yousef",
@@ -174,7 +202,7 @@ with DAG(
 
         clean_missing_values_task >> detect_outliers_task >> integrate_datasets_task >> load_to_postgres_task
     
-    with TaskGroup("Milestone_2", tooltip="Preparing Stream and Encoding Table") as milestone_2_encoding:
+    with TaskGroup("Milestone_2_Encoding", tooltip="Preparing Stream and Encoding Table") as milestone_2_encoding:
         prepare_streaming_data_task = PythonOperator(
             task_id = 'extract_5_percent',
             python_callable = prepare_streaming_data,
@@ -191,6 +219,59 @@ with DAG(
         )
 
         prepare_streaming_data_task >> encode_categorical_data_task
+    
+    with TaskGroup("Milestone_2_Streaming", tooltip="Streaming Using Kafka") as milestone_2_streaming:
+        start_kafka_producer_task = BashOperator(
+            task_id = "start_kafka_producer",
+            bash_command = "python /opt/airflow/scripts/kafka_producer.py"
+        )
+        consume_and_process_stream_task = PythonOperator(
+            task_id = 'consume_kafka',
+            python_callable = consume_and_process_stream,
+            op_kwargs = {
+                "lookup_table_filepath": f"{BASE_MISC_PATH}/lookup_table.csv",
+                "encoded_filepath": f"{BASE_CLEAN_PATH}/df_encoded.csv"
+            }
+        )
+        save_final_to_postgres_task = PythonOperator(
+            task_id = 'save_final_to_postgres',
+            python_callable = save_final_to_postgres,
+            op_kwargs = {
+                "final_df_filepath": f"{BASE_CLEAN_PATH}/FINAL_STOCKS.csv"
 
-    milestone_1 >> milestone_2_encoding 
+            }
+        )
+
+        start_kafka_producer_task >> consume_and_process_stream_task >> save_final_to_postgres_task
+
+    with TaskGroup("Milestone_2_Spark", tooltip="Analyzing Data with Spark") as milestone_2_spark:
+        initialize_spark_session_task = PythonOperator(
+            task_id = 'intialize_spark',
+            python_callable = intialize_spark_session,
+        )
+
+        run_spark_analytics_task = PythonOperator(
+            task_id = 'analysis_spark',
+            python_callable = run_spark_analytics,
+            op_kwargs = {
+                "lookup_table_filepath": f"{BASE_MISC_PATH}/lookup_table.csv",
+                "final_stocks_filepath": f"{BASE_CLEAN_PATH}/FINAL_STOCKS.csv"
+            }
+        )
+
+        initialize_spark_session_task >> run_spark_analytics_task
+    with TaskGroup("Milestone_3_Agent", tooltip="AI Agent") as milestone_3_agent:
+        process_ai_task = PythonOperator(
+            task_id="process_with_ai_agent",
+            python_callable=process_with_ai_agent,
+            op_kwargs = {
+                "final_stocks_filepath": f"{BASE_CLEAN_PATH}/FINAL_STOCKS.csv"
+            }
+        )
+
+
+
+    
+    milestone_1 >> milestone_2_encoding  >> milestone_2_streaming >> milestone_2_spark >> process_ai_task
+
 

@@ -23,5 +23,15 @@
     "timestamp": "2025-12-13T10:11:46.181449",
     "user_query": "What was the total trading volume for technology stocks last month?",
     "agent_response": "```sql\nSELECT SUM(total_trade_amount) AS total_volume\nFROM transactions\nWHERE stock_sector_technology = 1\n  AND timestamp >= DATE_SUB(CURRENT_DATE(), INTERVAL 1 MONTH)\n  AND timestamp < CURRENT_DATE();\n```"
+  },
+  {
+    "timestamp": "2025-12-14T12:50:53.969879",
+    "user_query": "What was the total trading volume for technology stocks last month?",
+    "agent_response": "[OpenRouter API Error] OPENROUTER_KEY missing"
+  },
+  {
+    "timestamp": "2025-12-14T12:52:01.376381",
+    "user_query": "What was the total trading volume for technology stocks last month?",
+    "agent_response": "```sql\nSELECT SUM(total_trade_amount) AS total_volume\nFROM transactions\nWHERE stock_sector_technology = 1\n  AND timestamp >= DATE_SUB(CURRENT_DATE, INTERVAL 1 MONTH)\n  AND timestamp < CURRENT_DATE;\n```"
   }
 ]

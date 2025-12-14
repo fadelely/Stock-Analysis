@@ -7,12 +7,12 @@ import os
 
 
 def main():
-
-    saved_dataset_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "merged_datasets")
+    # saved_dataset_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "misc")
+    saved_dataset_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "misc")
     stream_csv_path = os.path.join(saved_dataset_path, "stream.csv")
 
     producer = KafkaProducer(
-        bootstrap_servers='localhost:9092',
+        bootstrap_servers='kafka:29092',
         value_serializer=lambda v: json.dumps(v).encode('utf-8')
     )
     csv_data = pd.read_csv(stream_csv_path)

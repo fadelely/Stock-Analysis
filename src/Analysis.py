@@ -297,7 +297,7 @@ def kafka_stream_setup(df):
     stream_df = df.sample(frac=0.05, random_state=42)
     df_remaining = df.drop(stream_df.index)
 
-    saved_dataset_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "merged_datasets")
+    saved_dataset_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "misc")
     os.makedirs(saved_dataset_path, exist_ok=True)
     stream_csv_path = os.path.join(saved_dataset_path, "stream.csv")
     stream_df.to_csv(stream_csv_path, index=False)
@@ -310,7 +310,7 @@ def encode_row(row, lookup_table, df_columns):
         filtered_lookup = lookup_table[lookup_table["Column Name"] == col]
         if not filtered_lookup.empty:
             mapping_dict = filtered_lookup.set_index('Original Value')['Encoded Value'].to_dict()
-            row[col] = int(mapping_dict[row[col].iloc[0]])
+            row[col] = int(mapping_dict[str(row[col].iloc[0])])
     # this sets all the one hot encoded values to 1 initially, then aligns the row with the 
     # original datagram columns, adding the missing columns with 0s
     one_hot_encoded_cols = ["stock_ticker", "day_name", "stock_sector", "stock_industry"]
@@ -328,14 +328,10 @@ def encode_row(row, lookup_table, df_columns):
     
 
 def process_stream(lookup_table, df):
-    saved_dataset_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "merged_datasets")
-    os.makedirs(saved_dataset_path, exist_ok=True)
-    full_stocks_csv_path = os.path.join(saved_dataset_path, "FULL_STOCKS.csv")
-
     consumer = KafkaConsumer(
         "55_2803_55_10541_Topic",
         bootstrap_servers='kafka:29092',
-        auto_offset_reset='latest',
+        auto_offset_reset='earliest',
         group_id=None,
         value_deserializer=lambda x: json.loads(x.decode('utf-8'))
     )
@@ -350,100 +346,20 @@ def process_stream(lookup_table, df):
         row = pd.DataFrame([row])
         encoded_row = encode_row(row, lookup_table, df.columns)
         df = pd.concat([df, encoded_row], ignore_index=True)
-        df.to_csv(full_stocks_csv_path, index=False)
     
-    save_to_db(df, "encoded_df_final")
     print("Stream ended, closing consumer...")
-
     consumer.close()
+
+    return df
 
 def main():
     pd.set_option('display.max_columns', None)
-    base_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "datasets")
-
-    df_trades = pd.read_csv(os.path.join(base_path, "trades.csv"))
-    df_prices = pd.read_csv(os.path.join(base_path, "daily_trade_prices.csv"))
-    df_customers = pd.read_csv(os.path.join(base_path, "dim_customer.csv"))
-    df_stocks = pd.read_csv(os.path.join(base_path, "dim_stock.csv"))
-    df_dates = pd.read_csv(os.path.join(base_path, "dim_date.csv"))
-
-    # do not use the above variables at any point, only use the ones in the dict below
-    dfs = {
-        "trades": df_trades,
-        "prices": df_prices,
-        "customers": df_customers,
-        "stocks": df_stocks,
-        "dates": df_dates
-    }
-
-    print("Checking for duplicates...")
-    for _, df in dfs.items():
-        check_duplicates(df)
-        
-    print("\nChecking for null values...")
-    for _, df in dfs.items():
-        check_null_count(df)
-
-    print("\nFilling daily trade missing values...")
-    dfs["prices"] = fill_daily_trade_prices(dfs["prices"], dfs["trades"])
-
-    print("\nChecking for null values after imputation...")
-    for _, df in dfs.items():
-        check_null_count(df)
-
-    print("\nChecking and handling outliers...")
-    for name, df in dfs.items():
-        for column in df.select_dtypes(include='number').columns:
-            outlier_percentage = get_outlier_percentage(dfs[name], column) 
-            if(outlier_percentage > 10):
-                print(f"{column} has outliers! the total percentage is: {outlier_percentage}%")
-                print(f"Handling outliers in {column}...")
-
-                if(column == "average_trade_size"):
-                    dfs[name] = discretize_average_trade(dfs[name])
-                    print(f"{column} has been discretized.")
-                    continue
-
-                dfs[name] = handle_outlier(dfs[name], column)
-                outlier_percentage = get_outlier_percentage(dfs[name], column + "_outlier")
-                if(outlier_percentage > 10):
-                    print(f"{column} still has {outlier_percentage}% outliers.")
-                else:
-                    print(f"{column} now has less than 10 percent outliers.")
-
-    print("\nChecking for inconsistencies")
-    explore_unique_values(df_trades, df_prices, df_customers, df_stocks, df_dates)
-    detect_inconsistencies(df_trades, df_prices, df_customers, df_stocks, df_dates)
-    print("\nDetection Complete")
-
-    print("\nMerging tables...")
-    merged_df = merge_tables(
-        dfs["trades"],
-        dfs["prices"],
-        dfs["customers"],
-        dfs["stocks"],
-        dfs["dates"]
-    )
-
-    print("\nSaving merged dataframe...")
-    save_to_db(merged_df,'merged_df_final')
-
-    print("\nRemoving 5% of merged dataset to stream later...") 
-    remaining_df = kafka_stream_setup(merged_df)
-
-    print("\nEncoding categorical features...")
-    encoded_df = encode_data(remaining_df)
-    lookup_table = create_lookup_table(encoded_df)
-
-    print("\nProcessing stream...")
-    df_before_stream = encoded_df
-    print(f"Before streaming, the dataframe has {df_before_stream.shape[0]} rows")
-    process_stream(lookup_table, encoded_df)
-    df_after_stream = load_from_db("encoded_df_final")
-    print(f"After streaming, the dataframe has {df_after_stream.shape[0]} rows")
-
-    print("\nStarting Spark Analysis...")
-    run_spark_analysis(lookup_table)
+    spark_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "clean", "FINAL_STOCKS.csv")
+    lookup_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "misc", "lookup_table.csv")
+    print(lookup_path)
+    lookup_table = pd.read_csv(lookup_path)
+    spark = pd.read_csv(spark_path)
+    # run_spark_analysis(lookup_table, spark)
 
 
 
