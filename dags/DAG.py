@@ -139,7 +139,8 @@ def intialize_spark_session():
 
 def run_spark_analytics(lookup_table_filepath, final_stocks_filepath):
     lookup_table = pd.read_csv(lookup_table_filepath)
-    run_spark_analysis(lookup_table, final_stocks_filepath)
+    final_stocks = pd.read_csv(final_stocks_filepath)
+    run_spark_analysis(lookup_table, final_stocks)
 
 default_args = {
     "owner": "nabila_and_yousef",
@@ -238,9 +239,7 @@ with DAG(
             }
         )
 
-        # start_kafka_producer_task >> consume_and_process_stream_task >> save_final_to_postgres_task
-        # TODO DO NOT FORGET TO REVERT THIS DA 3ASHAN PRDOCUER BEY3OD SANATEEN 3OBAL MAY5ALAS
-        consume_and_process_stream_task >> save_final_to_postgres_task
+        start_kafka_producer_task >> consume_and_process_stream_task >> save_final_to_postgres_task
 
     with TaskGroup("Milestone_2_Spark", tooltip="Analyzing Data with Spark") as milestone_2_spark:
         initialize_spark_session_task = PythonOperator(

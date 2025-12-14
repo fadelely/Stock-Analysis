@@ -1,31 +1,39 @@
 import os
+import sys
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.functions import col, sum as _sum, avg, desc, count
-from db_utils import save_to_db_spark
+from db_utils import save_to_db_spark, save_to_db
 import pandas as pd
 
 def connect_to_master():
+    PYTHON_312_PATH = '/usr/bin/python3.12'
+    os.environ['PYSPARK_DRIVER_PYTHON'] = PYTHON_312_PATH
+    os.environ['PYSPARK_PYTHON'] = PYTHON_312_PATH
+
     spark = SparkSession.builder \
         .appName("M3_SPARK_APP_TEAM_11") \
         .master("spark://spark-master:7077") \
         .config("spark.driver.bindAddress", "0.0.0.0") \
-        .config("spark.driver.host", "localhost") \
+        .config("spark.driver.host", "airflow-worker") \
         .getOrCreate()
 
-def run_spark_analysis(lookup_table: pd.DataFrame, df_spark_filepath: str):
+def run_spark_analysis(lookup_table: pd.DataFrame, df_spark):
     print("Connecting to Spark Session...")
 
+    PYTHON_312_PATH = '/usr/bin/python3.12'
+    os.environ['PYSPARK_DRIVER_PYTHON'] = PYTHON_312_PATH
+    os.environ['PYSPARK_PYTHON'] = PYTHON_312_PATH
     spark = SparkSession.builder \
         .appName("M3_SPARK_APP_TEAM_11") \
         .master("spark://spark-master:7077") \
         .config("spark.driver.bindAddress", "0.0.0.0") \
-        .config("spark.driver.host", "localhost") \
+        .config("spark.driver.host", "airflow-worker") \
         .getOrCreate()
         
 
-    print(df_spark_filepath)
-    df_spark = spark.read.csv(df_spark_filepath)
+   
+    df_spark = spark.createDataFrame(df_spark)
 
     print("Decoding encoded columns using lookup table...")
 
@@ -89,34 +97,39 @@ def run_spark_analysis(lookup_table: pd.DataFrame, df_spark_filepath: str):
     volume_per_ticker = df_spark.groupBy("stock_ticker") \
                                 .agg(_sum("quantity").alias("total_volume")) 
     volume_per_ticker.show() 
-    save_to_db_spark(volume_per_ticker, "spark_analytics_1")
+    volume_per_ticker = volume_per_ticker.toPandas()
+    save_to_db(volume_per_ticker, "spark_analytics_1")
 
     print("Average stock price per sector:")
     avg_stock_spark = df_spark.groupBy("stock_sector") \
                       .agg(avg("stock_price").alias("avg_price")) 
     avg_stock_spark.show()
-    save_to_db_spark(avg_stock_spark, "spark_analytics_2")
+    avg_stock_spark = avg_stock_spark.toPandas()
+    save_to_db(avg_stock_spark, "spark_analytics_2")
 
     print("Buy vs Sell transactions on weekends:")
     weekend_transactions = df_spark.filter(col("is_weekend") == 'True') \
                                 .groupBy("transaction_type") \
                                 .count()
     weekend_transactions.show()
-    save_to_db_spark(weekend_transactions, "spark_analytics_3")
+    weekend_transactions = weekend_transactions.toPandas()
+    save_to_db(weekend_transactions, "spark_analytics_3")
     
     print("Customers with more than 10 transactions:")
     high_transaction_customers = df_spark.groupBy("customer_id") \
                                         .count() \
                                         .filter(col("count") > 10) 
     high_transaction_customers.show(n=10000)
-    save_to_db_spark(high_transaction_customers, "spark_analytics_4")
+    high_transaction_customers = high_transaction_customers.toPandas()
+    save_to_db(high_transaction_customers, "spark_analytics_4")
 
     print("Total trade amount per day of the week:")
     trade_amount_per_day = df_spark.groupBy("day_name") \
                                 .agg(_sum("total_trade_amount").alias("total_amt")) \
                                 .orderBy(desc("total_amt"))
     trade_amount_per_day.show()
-    save_to_db_spark(trade_amount_per_day, "spark_analytics_5")
+    trade_amount_per_day = trade_amount_per_day.toPandas()
+    save_to_db(trade_amount_per_day, "spark_analytics_5")
 
     print("3.3.3 SPARK SQL QUESTIONS")
 
@@ -131,7 +144,8 @@ def run_spark_analysis(lookup_table: pd.DataFrame, df_spark_filepath: str):
         LIMIT 5
     """)
     top_tickers.show()
-    save_to_db_spark(top_tickers, "spark_sql_1")
+    top_tickers = top_tickers.toPandas()
+    save_to_db(top_tickers, "spark_sql_1")
 
     print("Average total trade amount by customer account type:")
     avg_trade_by_account = spark.sql("""
@@ -140,7 +154,8 @@ def run_spark_analysis(lookup_table: pd.DataFrame, df_spark_filepath: str):
         GROUP BY customer_account_type
     """)
     avg_trade_by_account.show()
-    save_to_db_spark(avg_trade_by_account, "spark_sql_2")
+    avg_trade_by_account = avg_trade_by_account.toPandas()
+    save_to_db(avg_trade_by_account, "spark_sql_2")
     
     print("Number of transactions on holidays vs non-holidays:")
     holiday_transactions = spark.sql("""
@@ -149,7 +164,8 @@ def run_spark_analysis(lookup_table: pd.DataFrame, df_spark_filepath: str):
         GROUP BY is_holiday
     """)
     holiday_transactions.show()
-    save_to_db_spark(holiday_transactions, "spark_sql_3")
+    holiday_transactions.toPandas
+    save_to_db(holiday_transactions, "spark_sql_3")
     
     print("Total trading volume by stock sector on weekends sorted descendengly to display  highest total first:")
     weekend_volume_by_sector = spark.sql("""
@@ -160,7 +176,8 @@ def run_spark_analysis(lookup_table: pd.DataFrame, df_spark_filepath: str):
         ORDER BY total_vol DESC
     """)
     weekend_volume_by_sector.show()
-    save_to_db_spark(weekend_volume_by_sector, "spark_sql_4")
+    weekend_volume_by_sector = weekend_volume_by_sector.toPandas()
+    save_to_db(weekend_volume_by_sector, "spark_sql_4")
     
     print("total buy vs sell amount for each stock liquidity tier")
     trade_by_liquidity_tier = spark.sql("""
@@ -169,6 +186,7 @@ def run_spark_analysis(lookup_table: pd.DataFrame, df_spark_filepath: str):
         GROUP BY stock_liquidity_tier, transaction_type
     """)
     trade_by_liquidity_tier.show()
-    save_to_db_spark(trade_by_liquidity_tier, "spark_sql_5")
+    trade_by_liquidity_tier = trade_by_liquidity_tier.toPandas()
+    save_to_db(trade_by_liquidity_tier, "spark_sql_5")
 
     spark.stop()

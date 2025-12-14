@@ -47,7 +47,7 @@ def save_to_db(cleaned, table_name):
         print(f"Error saving to database: {ex}")
     
 def save_to_db_spark(df_spark, table_name):
-    df.write \
+    df_spark.write \
     .format("jdbc") \
     .option("url", "jdbc:postgresql://pgdatabase:5432/stockanalysis") \
     .option("dbtable", table_name) \
