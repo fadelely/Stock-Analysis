@@ -245,6 +245,8 @@ services:
       - ./data:/opt/airflow/data
       - ./src:/opt/airflow/scripts/src
       - ./agent:/opt/airflow/scripts/agent
+    ports:
+      - "8501:8501"
     depends_on:
       redis:
         condition: service_healthy
@@ -288,7 +290,5 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.streamlit
-    ports:
-      - "8501:8501"
     volumes:
       - ./src:/app/src

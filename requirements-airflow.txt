@@ -3,3 +3,7 @@ scikit-learn
 psycopg2-binary
 pyspark==3.5.3
 kafka-python-ng
+streamlit
+matplotlib
+seaborn
+plotly

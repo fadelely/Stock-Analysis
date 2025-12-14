@@ -145,6 +145,70 @@ def run_spark_analytics(lookup_table_filepath, final_stocks_filepath):
     final_stocks = pd.read_csv(final_stocks_filepath)
     run_spark_analysis(lookup_table, final_stocks)
 
+### VISUALIZATION SETUP ###
+def prepare_visualization(lookup_table_filepath, final_stocks_filepath):
+    lookup_df = pd.read_csv(lookup_table_filepath)
+    df = pd.read_csv(final_stocks_filepath)
+
+    label_columns = [
+        "transaction_type",
+        "customer_account_type",
+        "average_trade_size",
+        "stock_liquidity_tier",
+        "is_weekend",
+        "is_holiday"
+    ]
+
+    for colname in label_columns:
+        current_lookup_df = lookup_df[lookup_df["Column Name"] == colname][["Encoded Value", "Original Value"]].copy()
+        current_lookup_df.columns = [f"{colname}_KEY", f"{colname}_DECODED"]
+        df = df.merge(
+            current_lookup_df,
+            left_on=colname,
+            right_on=f"{colname}_KEY",
+            how="left"
+        )
+        df = df.drop(columns=[colname, f"{colname}_KEY"])
+        df = df.rename(columns={f"{colname}_DECODED": colname})
+
+    # Decode ONE-HOT columns
+    onehot_groups = {
+        "day_name": "day_name_",
+        "stock_sector": "stock_sector_",
+        "stock_industry": "stock_industry_",
+        "stock_ticker": "stock_ticker_"
+    }
+
+    for new_col, prefix in onehot_groups.items():
+        onehot_cols = [c for c in df.columns if c.startswith(prefix)]
+        
+        if onehot_cols:
+            def decode_onehot(row):
+                for colname in onehot_cols:
+                    if row[colname] == 1:
+                        return colname[len(prefix):]
+                return None
+            
+            df[new_col] = df.apply(decode_onehot, axis=1)
+            
+            # Drop the one-hot encoded columns
+            df = df.drop(columns=onehot_cols)
+
+    print("Reversing log transformations for STK001 stock_price and total_trade_amount")
+    df.loc[df["stock_ticker"] == "STK001", "stock_price"] = np.exp(df.loc[df["stock_ticker"] == "STK001", "stock_price"])
+    df["total_trade_amount"] = np.exp(df["total_trade_amount"])
+
+    # Format stock_ticker: fully uppercase
+    df["stock_ticker"] = df["stock_ticker"].str.upper()
+
+    # Format other columns: replace _ with space and title case
+    for col in ["day_name", "stock_sector", "stock_industry", "transaction_type", 
+                "customer_account_type", "average_trade_size", "stock_liquidity_tier"]:
+        if col in df.columns:
+            df[col] = df[col].str.replace("_", " ").str.title()
+
+    save_to_db(df, "visualization")
+
 default_args = {
     "owner": "nabila_and_yousef",
     "depends_on_past": False,
@@ -260,6 +324,23 @@ with DAG(
         )
 
         initialize_spark_session_task >> run_spark_analytics_task
+    with TaskGroup("Milestone_3_Visualization", tooltip="Visualizing Data") as milestone_3_visualization:
+        prepare_visualization_task = PythonOperator(
+            task_id = 'prepare_visualization',
+            python_callable = prepare_visualization,
+            op_kwargs = {
+                "lookup_table_filepath": f"{BASE_MISC_PATH}/lookup_table.csv",
+                "final_stocks_filepath": f"{BASE_CLEAN_PATH}/FINAL_STOCKS.csv"
+            }
+        )
+
+        start_visualization_service_task = BashOperator(
+            task_id = "start_visualization_service",
+            bash_command = "streamlit run /opt/airflow/scripts/src/visualization/visualize.py"
+
+        )
+
+        prepare_visualization_task >> start_visualization_service_task
     with TaskGroup("Milestone_3_Agent", tooltip="AI Agent") as milestone_3_agent:
         process_ai_task = PythonOperator(
             task_id="process_with_ai_agent",
@@ -269,9 +350,11 @@ with DAG(
             }
         )
 
+        process_ai_task
+
 
 
     
-    milestone_1 >> milestone_2_encoding  >> milestone_2_streaming >> milestone_2_spark >> process_ai_task
+    milestone_1 >> milestone_2_encoding  >> milestone_2_streaming >> milestone_2_spark >> [milestone_3_agent, milestone_3_visualization] 
 
 
