@@ -5,10 +5,13 @@ import psycopg2
 import os
 import sys
 
-sys.path.append(os.path.join(os.path.dirname(__file__), '../scripts'))
+# there's some way to add them using docker instead of using sys but too lazy 
+sys.path.append(os.path.join(os.path.dirname(__file__), '../scripts/src'))
+sys.path.append(os.path.join(os.path.dirname(__file__), '../scripts/agent'))
 from Analysis import fill_daily_trade_prices, merge_tables, encode_data, create_lookup_table, get_outlier_percentage, handle_outlier, discretize_average_trade, process_stream 
 from spark import connect_to_master, run_spark_analysis
 from db_utils import save_to_db
+from ai_agent import process_with_ai_agent
 
 from airflow import DAG
 from airflow.utils.dates import days_ago
@@ -257,7 +260,18 @@ with DAG(
         )
 
         initialize_spark_session_task >> run_spark_analytics_task
+    with TaskGroup("Milestone_3_Agent", tooltip="AI Agent") as milestone_3_agent:
+        process_ai_task = PythonOperator(
+            task_id="process_with_ai_agent",
+            python_callable=process_with_ai_agent,
+            op_kwargs = {
+                "final_stocks_filepath": f"{BASE_CLEAN_PATH}/FINAL_STOCKS.csv"
+            }
+        )
+
+
+
     
-    milestone_1 >> milestone_2_encoding  >> milestone_2_streaming >> milestone_2_spark
+    milestone_1 >> milestone_2_encoding  >> milestone_2_streaming >> milestone_2_spark >> process_ai_task
 
 

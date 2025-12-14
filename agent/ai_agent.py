@@ -9,15 +9,16 @@ load_dotenv()
 
 HF_TOKEN = os.getenv("HF_TOKEN")
 
-AGENT_LOG_PATH = "agent/AGENT_LOGS.JSON"
-QUERY_FILE = "agent/user_query.txt"
-CSV_PATH = "merged_datasets/FULL_STOCKS.csv"
+SCRIPTS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+AGENT_LOG_PATH =os.path.join(SCRIPTS_DIR, "agent", "AGENT_LOGS.JSON") 
+QUERY_FILE = os.path.join(SCRIPTS_DIR, "agent", "user_query.txt")
 
 
 class HuggingFaceSQLAgent:
-    def __init__(self, model="HuggingFaceH4/zephyr-7b-beta"):
+    def __init__(self, csv_path, model="HuggingFaceH4/zephyr-7b-beta", ):
         self.model = model
         self.hf_token = HF_TOKEN
+        self.CSV_PATH = csv_path
 
     def _call_hf(self, prompt: str) -> str:
         if not self.hf_token:
@@ -58,19 +59,19 @@ class HuggingFaceSQLAgent:
             return f.read().strip()
 
     def load_column_names(self) -> str:
-        df = pd.read_csv(CSV_PATH, nrows=1)
+        df = pd.read_csv(self.CSV_PATH, nrows=1)
         return ", ".join(df.columns)
 
     def build_prompt(self, user_query: str, columns: str) -> str:
         return f"""
-User Question:
-{user_query}
+        User Question:
+        {user_query}
 
-Available Columns:
-{columns}
+        Available Columns:
+        {columns}
 
-Generate a SQL query that answers the question.
-"""
+        Generate a SQL query that answers the question.
+        """
 
     def log_result(self, user_query: str, sql: str):
         entry = {
@@ -99,11 +100,8 @@ Generate a SQL query that answers the question.
         return sql
 
 
-def process_with_ai_agent():
-    agent = HuggingFaceSQLAgent(model="nex-agi/deepseek-v3.1-nex-n1:free")
+def process_with_ai_agent(final_stocks_filepath):
+    agent = HuggingFaceSQLAgent(model="nex-agi/deepseek-v3.1-nex-n1:free", csv_path=final_stocks_filepath)
     sql = agent.run()
     print("Generated SQL:\n", sql)
 
-
-if __name__ == "__main__":
-    process_with_ai_agent()
