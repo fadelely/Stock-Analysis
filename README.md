@@ -4,6 +4,30 @@ This dataset contains **10,000 rows and 16 features** representing trading and p
 The data was compiled by merging several single-source datasets of different types — including trading records, customer profiles, and market data — into one unified dataset.  
 Each record corresponds to a single transaction made by a customer in a specific stock on a given date, capturing details about trading behavior, market conditions, and stock characteristics.
 
+This project delivers an **end-to-end, containerized data pipeline** integrating data ingestion, processing, analytics, visualization, and an AI-powered natural language query agent.
+
+## Technologies Used
+- Apache Airflow
+- PostgreSQL
+- Kafka
+- Apache Spark
+- Streamlit
+- Hugging Face LLM (AI Agent)
+- Docker & Docker Compose
+
+---
+## Project Architecture
+The system consists of the following components:
+
+- **Airflow**: Orchestrates ETL and analytics workflows
+- **PostgreSQL**: Stores cleaned and analytical datasets
+- **Kafka**: Handles streaming data (producer/consumer)
+- **Spark**: Performs batch analytics and transformations
+- **Streamlit**: Displays analytics dashboards
+- **AI Agent**: Converts natural language queries into SQL
+
+All components communicate over a shared Docker network.
+
 ## Feature Description
 
 | Feature Name             | Description                                                                 | Data Type  | Example Values                |
@@ -60,11 +84,6 @@ Below are the features that are one hot encoded, with all of the possible values
 ### Build and Start All Services
 `docker compose up --build`
 
-  This command builds the image (if not already built) and starts:
-* **PostgreSQL database** (`pgdatabase`)
-* **pgAdmin web interface** (`pg_admin`)
-* **Main analysis app** (`stock-analysis`)
-
 ### To run after building
 ` docker compose up -d`
 
@@ -75,13 +94,24 @@ Below are the features that are one hot encoded, with all of the possible values
 `docker compose down`
 
 
-### 
+### Accessing services
 Airflow UI: http://localhost:8080
+Use the Airflow UI to:
+- Monitor DAG execution
+- View task logs
+- Debug failures
+
 Streamlit: http://localhost:8501
 
 
-### agent 
+## agent
+The AI Agent allows users to ask questions in natural language and receive
+automatically generated SQL queries.
+
+### Create a .env file in the project root if using the AI Agent:
+`HF_TOKEN= ...`
+### command to run the agent seperatly 
 python3 agent/ai_agent.py
 
-add to the .env 
-HF_TOKEN= ...
+
+
