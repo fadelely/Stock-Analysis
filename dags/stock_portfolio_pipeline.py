@@ -336,7 +336,7 @@ with DAG(
 
         start_visualization_service_task = BashOperator(
             task_id = "start_visualization_service",
-            bash_command = "streamlit run /opt/airflow/scripts/src/visualization/visualize.py"
+            bash_command = "streamlit run /opt/airflow/scripts/src/visualization/dashboard.py"
 
         )
 

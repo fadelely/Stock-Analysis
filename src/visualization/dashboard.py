@@ -90,6 +90,23 @@ if selected_sectors:
 if selected_account_types:
     filtered_stocks_df = filtered_stocks_df[filtered_stocks_df['customer_account_type'].isin(selected_account_types)]
 
+st.markdown("---")
+st.subheader("Portfolio Performance Metrics")
+
+col1, col2, col3, col4, col5 = st.columns(5)
+
+total_volume = filtered_stocks_df['quantity'].sum()
+total_trade_amount = filtered_stocks_df['total_trade_amount'].sum()
+total_transactions = len(filtered_stocks_df)
+avg_trade_size = filtered_stocks_df['total_trade_amount'].mean()
+unique_customers = filtered_stocks_df['customer_id'].nunique()
+
+col1.metric("Total Volume", f"{total_volume:,}")
+col2.metric("Total Trade Amount", f"${total_trade_amount:,.0f}")
+col3.metric("Total Transactions", f"{total_transactions:,}")
+col4.metric("Avg Trade Size", f"${avg_trade_size:,.2f}")
+col5.metric("Active Customers", f"{unique_customers:,}")
+
 # QUERY 1: Trading Volume by Stock Ticker ###
 total_volume_df = filtered_stocks_df.groupby('stock_ticker')['quantity'].sum().reset_index()
 total_volume_df.columns = ['stock_ticker', 'total_volume']
@@ -225,3 +242,90 @@ fig_top_customers.update_layout(
 )
 fig_top_customers.update_traces(texttemplate='$%{x:,.0f}', textposition='outside')
 st.plotly_chart(fig_top_customers, use_container_width=True)
+
+### ADVANCED VISUALIZATION QUERY: Holiday vs Non-Holiday Trading Analysis ###
+st.markdown("---")
+st.subheader("Holiday vs Non-Holiday Trading Analysis")
+
+# Total transactions comparison
+holiday_comparison = filtered_stocks_df.groupby('is_holiday').size().reset_index(name='transaction_count')
+holiday_comparison['holiday_label'] = holiday_comparison['is_holiday'].map({'True': 'Holiday', 'False': 'Non-Holiday'})
+
+col1, col2 = st.columns(2)
+
+with col1:
+    fig_holiday_pie = px.pie(
+        holiday_comparison,
+        values='transaction_count',
+        names='holiday_label',
+        title='Total Transactions: Holiday vs Non-Holiday',
+        color='holiday_label',
+        color_discrete_map={'Holiday': '#e74c3c', 'Non-Holiday': '#3498db'}
+    )
+    fig_holiday_pie.update_traces(textposition='inside', textinfo='percent+label+value')
+    st.plotly_chart(fig_holiday_pie, use_container_width=True)
+
+
+# Sector distribution for Holiday transactions
+st.subheader("Sector Distribution")
+
+col3, col4 = st.columns(2)
+
+with col3:
+    holiday_sectors = filtered_stocks_df[filtered_stocks_df['is_holiday'] == 'True'].groupby('stock_sector').size().reset_index(name='count')
+    
+    fig_holiday_sectors = px.pie(
+        holiday_sectors,
+        values='count',
+        names='stock_sector',
+        title='Sectors Traded on Holidays',
+        color_discrete_sequence=px.colors.sequential.Reds_r
+    )
+    fig_holiday_sectors.update_traces(textposition='inside', textinfo='percent+label')
+    st.plotly_chart(fig_holiday_sectors, use_container_width=True)
+
+with col4:
+    non_holiday_sectors = filtered_stocks_df[filtered_stocks_df['is_holiday'] == 'False'].groupby('stock_sector').size().reset_index(name='count')
+    
+    fig_non_holiday_sectors = px.pie(
+        non_holiday_sectors,
+        values='count',
+        names='stock_sector',
+        title='Sectors Traded on Non-Holidays',
+        color_discrete_sequence=px.colors.sequential.Blues_r
+    )
+    fig_non_holiday_sectors.update_traces(textposition='inside', textinfo='percent+label')
+    st.plotly_chart(fig_non_holiday_sectors, use_container_width=True)
+
+# Stock ticker distribution
+st.subheader("Top Stock Tickers Distribution")
+
+col5, col6 = st.columns(2)
+
+with col5:
+    holiday_tickers = filtered_stocks_df[filtered_stocks_df['is_holiday'] == 'True'].groupby('stock_ticker').size().reset_index(name='count')
+    holiday_tickers = holiday_tickers.sort_values('count', ascending=False).head(10)
+    
+    fig_holiday_tickers = px.pie(
+        holiday_tickers,
+        values='count',
+        names='stock_ticker',
+        title='Top 10 Stock Tickers Traded on Holidays',
+        color_discrete_sequence=px.colors.sequential.Reds_r
+    )
+    fig_holiday_tickers.update_traces(textposition='inside', textinfo='percent+label')
+    st.plotly_chart(fig_holiday_tickers, use_container_width=True)
+
+with col6:
+    non_holiday_tickers = filtered_stocks_df[filtered_stocks_df['is_holiday'] == 'False'].groupby('stock_ticker').size().reset_index(name='count')
+    non_holiday_tickers = non_holiday_tickers.sort_values('count', ascending=False).head(10)
+    
+    fig_non_holiday_tickers = px.pie(
+        non_holiday_tickers,
+        values='count',
+        names='stock_ticker',
+        title='Top 10 Stock Tickers Traded on Non-Holidays',
+        color_discrete_sequence=px.colors.sequential.Blues_r
+    )
+    fig_non_holiday_tickers.update_traces(textposition='inside', textinfo='percent+label')
+    st.plotly_chart(fig_non_holiday_tickers, use_container_width=True)
