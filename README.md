@@ -99,17 +99,23 @@ Use the Airflow UI to:
 - View task logs
 - Debug failures
 
-Acess Streamlit: http://localhost:8501
+To view the dashboard, access Streamlit at http://localhost:8501. It only runs once the full pipeline finishes.
+
+The full pipeline that runs can be seen in the image below.
+![pipeline](screenshots/DAG_graph.png)
 
 
-## agent
-The AI Agent allows users to ask questions in natural language and receive
-automatically generated SQL queries.
+## Agent
+The AI Agent allows users to ask questions in natural language and receive automatically generated SQL queries. 
 
-### Create a .env file in the project root if using the AI Agent:
+### Setup
+
+If you plan to use the AI Agent, create a `.env` file in the project root and add your Hugging Face token:
 `HF_TOKEN= ...`
-### command to run the agent seperately 
-python3 agent/ai_agent.py
+
+Write your query inside of `agent/user_query.txt`, then either the pipeline inside of airflow until the process_with_ai_agent task runs, or manually run it with `python agent/ai_agent.py` if the pipeline has been ran before.
+
+
 
 
 

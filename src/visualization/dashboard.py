@@ -245,8 +245,6 @@ st.plotly_chart(fig_top_customers, use_container_width=True)
 
 ### ADVANCED VISUALIZATION QUERY: Holiday vs Non-Holiday Trading Analysis ###
 st.markdown("---")
-st.header("Advanced Visualizations")
-st.markdown("---")
 st.subheader("Holiday vs Non-Holiday Trading Analysis")
 
 # Total transactions comparison
