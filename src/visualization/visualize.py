@@ -42,56 +42,34 @@ st.sidebar.markdown("---")
 st.sidebar.subheader("Stock Ticker Filter")
 all_tickers = sorted(stocks_df['stock_ticker'].unique().tolist())
 
-if 'selected_tickers' not in st.session_state:
-    st.session_state.selected_tickers = all_tickers
-
-if st.sidebar.button("Select All Tickers"):
-    st.session_state.selected_tickers = all_tickers
-
 selected_tickers = st.sidebar.multiselect(
     "Filter by Stock Tickers",
     options=all_tickers,
-    default=st.session_state.selected_tickers,
+    default=all_tickers,
     help="Search and select stock tickers to display"
 )
-
-st.session_state.selected_tickers = selected_tickers
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("Sector Filter")
 all_sectors = sorted(stocks_df['stock_sector'].unique().tolist())
 
-if 'selected_sectors' not in st.session_state:
-    st.session_state.selected_sectors = all_sectors
-
-if st.sidebar.button("Select All Sectors"):
-    st.session_state.selected_sectors = all_sectors
-
 selected_sectors = st.sidebar.multiselect(
     "Filter by Sectors",
     options=all_sectors,
-    default=st.session_state.selected_sectors,
+    default=all_sectors,
     help="Search and select sectors to display"
 )
-st.session_state.selected_sectors = selected_sectors
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("Customer Type Filter")
 all_account_types = sorted(stocks_df['customer_account_type'].unique().tolist())
 
-if 'selected_account_types' not in st.session_state:
-    st.session_state.selected_account_types = all_account_types
-
-if st.sidebar.button("Select All Account Types"):
-    st.session_state.selected_account_types = all_account_types
-
 selected_account_types = st.sidebar.multiselect(
     "Filter by Account Types",
     options=all_account_types,
-    default=st.session_state.selected_account_types,
+    default=all_account_types,
     help="Search and select account types to display"
 )
-st.session_state.selected_account_types = selected_account_types
 
 ### FILTERING DATAFRAME ###
 filtered_stocks_df = stocks_df.copy()
@@ -198,7 +176,7 @@ st.plotly_chart(fig_day_activity, use_container_width=True)
 customer_transactions = filtered_stocks_df.groupby(['customer_id', 'customer_account_type']).size().reset_index(name='transaction_count')
 
 st.markdown("---")
-st.subheader("👤 Customer Transaction Distribution")
+st.subheader("Customer Transaction Distribution")
 
 fig_customer_dist = px.histogram(
     customer_transactions,
@@ -206,7 +184,7 @@ fig_customer_dist = px.histogram(
     color='customer_account_type',
     title='Distribution of Transactions per Customer by Account Type',
     labels={'transaction_count': 'Number of Transactions', 'count': 'Number of Customers'},
-    nbins=300,
+    nbins=150,
     barmode='overlay'
 )
 
