@@ -95,7 +95,7 @@ Below are the features that are one hot encoded, with all of the possible values
 
 
 ### Accessing services
-Airflow UI: http://localhost:8080
+Airflow UI: http://localhost:8082
 
 Use the Airflow UI to:
 - Monitor DAG execution
