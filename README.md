@@ -80,15 +80,12 @@ Below are the features that are one hot encoded, with all of the possible values
 |                 | Renewables, Retail, Software, Utilities                     | One-Hot       |
 
 
-# Running with Docker Compose
+# Running the pipeline
 ### Build and Start All Services
 `docker compose up --build`
 
 ### To run after building
 ` docker compose up -d`
-
-### To watch logs 
-`docker logs stock-analysis --follow`
 
 ### Stop All Services
 `docker compose down`
@@ -111,7 +108,7 @@ automatically generated SQL queries.
 
 ### Create a .env file in the project root if using the AI Agent:
 `HF_TOKEN= ...`
-### command to run the agent seperatly 
+### command to run the agent seperately 
 python3 agent/ai_agent.py
 
 

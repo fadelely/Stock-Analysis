@@ -90,6 +90,23 @@ if selected_sectors:
 if selected_account_types:
     filtered_stocks_df = filtered_stocks_df[filtered_stocks_df['customer_account_type'].isin(selected_account_types)]
 
+st.markdown("---")
+st.subheader("Portfolio Performance Metrics")
+
+col1, col2, col3, col4, col5 = st.columns(5)
+
+total_volume = filtered_stocks_df['quantity'].sum()
+total_trade_amount = filtered_stocks_df['total_trade_amount'].sum()
+total_transactions = len(filtered_stocks_df)
+avg_trade_size = filtered_stocks_df['total_trade_amount'].mean()
+unique_customers = filtered_stocks_df['customer_id'].nunique()
+
+col1.metric("Total Volume", f"{total_volume:,}")
+col2.metric("Total Trade Amount", f"${total_trade_amount:,.0f}")
+col3.metric("Total Transactions", f"{total_transactions:,}")
+col4.metric("Avg Trade Size", f"${avg_trade_size:,.2f}")
+col5.metric("Active Customers", f"{unique_customers:,}")
+
 # QUERY 1: Trading Volume by Stock Ticker ###
 total_volume_df = filtered_stocks_df.groupby('stock_ticker')['quantity'].sum().reset_index()
 total_volume_df.columns = ['stock_ticker', 'total_volume']
@@ -314,5 +331,3 @@ with col6:
     )
     fig_non_holiday_tickers.update_traces(textposition='inside', textinfo='percent+label')
     st.plotly_chart(fig_non_holiday_tickers, use_container_width=True)
-
-st.markdown("---")
