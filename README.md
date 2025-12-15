@@ -96,12 +96,13 @@ Below are the features that are one hot encoded, with all of the possible values
 
 ### Accessing services
 Airflow UI: http://localhost:8080
+
 Use the Airflow UI to:
 - Monitor DAG execution
 - View task logs
 - Debug failures
 
-Streamlit: http://localhost:8501
+Acess Streamlit: http://localhost:8501
 
 
 ## agent
