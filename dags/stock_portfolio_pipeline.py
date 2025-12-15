@@ -213,15 +213,24 @@ default_args = {
     "owner": "nabila_and_yousef",
     "depends_on_past": False,
     "start_date": days_ago(2),
+    "email_on_retry": False,
     "retries": 1
 }
 
+DAG(
+'stock_portfolio_pipeline',
+default_args=default_args,
+schedule_interval='@daily',
+catchup=False,
+)
 
 with DAG(
     dag_id = "stock_portfolio_pipeline_Team_11",
-    schedule_interval = '@once', 
+    description='End-to-end stock portfolio analytics pipeline',
+    schedule_interval = '@daily', 
+    catchup=False,
     default_args = default_args,
-    tags = ['stock-portfolio-pipeline'],
+    tags=['data-engineering', 'stocks', 'analytics', 'stock-portfolio-pipeline'],
 )as dag:
     with TaskGroup("Milestone_1", tooltip="Initial Cleaning and Integration") as milestone_1:
         clean_missing_values_task = PythonOperator(
