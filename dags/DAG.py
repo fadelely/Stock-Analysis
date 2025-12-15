@@ -287,7 +287,7 @@ with DAG(
     with TaskGroup("Milestone_2_Streaming", tooltip="Streaming Using Kafka") as milestone_2_streaming:
         start_kafka_producer_task = BashOperator(
             task_id = "start_kafka_producer",
-            bash_command = "python /opt/airflow/scripts/kafka_producer.py"
+            bash_command = "python /opt/airflow/scripts/src/kafka_producer.py"
         )
         consume_and_process_stream_task = PythonOperator(
             task_id = 'consume_kafka',

@@ -7,8 +7,7 @@ import os
 
 
 def main():
-    # saved_dataset_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "misc")
-    saved_dataset_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "misc")
+    saved_dataset_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "misc")
     stream_csv_path = os.path.join(saved_dataset_path, "stream.csv")
 
     producer = KafkaProducer(
